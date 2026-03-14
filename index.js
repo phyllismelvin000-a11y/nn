@@ -58,6 +58,10 @@ bot.use(pendingOrderImageOnly);
 
 // Éviter que le bot ne plante sur une erreur (ex: Firestore désactivé)
 bot.catch((err, ctx) => {
+  if (err.message && err.message.includes('message is not modified')) {
+    try { ctx.answerCbQuery().catch(() => {}); } catch (_) {}
+    return;
+  }
   console.error('Erreur bot:', err.message);
   if (err.code === 5 || (err.message && err.message.includes('NOT_FOUND'))) {
     console.error('\n❌ NOT_FOUND = la base Firestore n’existe pas encore.');
