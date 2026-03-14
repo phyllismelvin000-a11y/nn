@@ -21,9 +21,9 @@ function initFirebase() {
     if (!fs.existsSync(keyPath)) {
       console.error('\n❌ Firebase : ni FIREBASE_SERVICE_ACCOUNT (env), ni serviceAccountKey.json.');
       console.error('   Local : place serviceAccountKey.json dans le projet.');
-      console.error('   Vercel : ajoute la variable FIREBASE_SERVICE_ACCOUNT (JSON complet) dans les paramètres du projet.');
+      console.error('   En prod (Vercel, Railway, Render…) : ajoute la variable FIREBASE_SERVICE_ACCOUNT (JSON complet) dans les Variables d\'environnement du projet.');
       console.error('');
-      if (process.env.VERCEL) throw new Error('Firebase credentials missing');
+      if (process.env.VERCEL) throw new Error('Firebase credentials missing. Set FIREBASE_SERVICE_ACCOUNT in your host (Vercel/Railway/Render) → Environment Variables (full JSON key).');
       process.exit(1);
     }
     serviceAccount = require(keyPath);
