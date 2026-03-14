@@ -66,8 +66,20 @@ app.set('views', path.join(__dirname, 'views'));
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+const useFileStore = process.env.NODE_ENV === 'production' || process.env.SESSION_PATH;
+let sessionStore;
+if (useFileStore) {
+  try {
+    const FileStore = require('session-file-store')(session);
+    const sessionPath = process.env.SESSION_PATH || path.join(__dirname, 'data', 'sessions');
+    sessionStore = new FileStore({ path: sessionPath, ttl: 24 * 60 * 60 });
+  } catch (e) {
+    console.warn('Session file store non disponible, utilisation du store mémoire:', e.message);
+  }
+}
 app.use(
   session({
+    store: sessionStore,
     secret: SECRET,
     resave: false,
     saveUninitialized: false,

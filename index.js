@@ -59,8 +59,11 @@ bot.use(pendingOrderImageOnly);
 
 // Éviter que le bot ne plante sur une erreur (ex: Firestore désactivé)
 bot.catch((err, ctx) => {
-  if (err.message && err.message.includes('message is not modified')) {
-    try { ctx.answerCbQuery().catch(() => {}); } catch (_) {}
+  const isUnchangedMessage =
+    (err.message && err.message.includes('message is not modified')) ||
+    (err.response?.description && err.response.description.includes('message is not modified'));
+  if (isUnchangedMessage) {
+    try { if (ctx?.answerCbQuery) ctx.answerCbQuery().catch(() => {}); } catch (_) {}
     return;
   }
   console.error('Erreur bot:', err.message);
@@ -1046,7 +1049,23 @@ async function start() {
     console.log('  Backoffice : http://localhost:' + backofficePort + '/admin');
   }
   console.log('  Lancement du bot Telegram...');
-  await bot.launch();
+  const launchOpts = { dropPendingUpdates: true };
+  const maxLaunchAttempts = 5;
+  const launchDelayMs = 8000;
+  for (let attempt = 1; attempt <= maxLaunchAttempts; attempt++) {
+    try {
+      await bot.launch(launchOpts);
+      break;
+    } catch (e) {
+      const is409 = e.response?.error_code === 409 || (e.message && e.message.includes('409'));
+      if (is409 && attempt < maxLaunchAttempts) {
+        console.log('  Conflit 409 (autre instance en cours). Nouvelle tentative dans ' + launchDelayMs / 1000 + ' s...');
+        await new Promise((r) => setTimeout(r, launchDelayMs));
+      } else {
+        throw e;
+      }
+    }
+  }
   backoffice.setBot(bot);
   await runPaymentTimeoutRecovery(bot);
   console.log('');

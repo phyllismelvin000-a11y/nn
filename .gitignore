@@ -3,3 +3,4 @@ node_modules/
 serviceAccountKey.json
 *.log
 .DS_Store
+data/
