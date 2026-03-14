@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ajout rapide produit — Backoffice MonAbo</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root { --bg:#0f0f12; --card:#18181c; --border:#2a2a2e; --text:#e4e4e7; --muted:#71717a; --accent:#22c55e; }
+    *{box-sizing:border-box;} body{margin:0;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.5;}
+    .app{display:flex;min-height:100vh;} .sidebar{width:220px;background:var(--card);border-right:1px solid var(--border);padding:1.25rem 0;}
+    .sidebar a{display:block;padding:0.6rem 1.25rem;color:var(--muted);text-decoration:none;} .main{flex:1;padding:1.5rem 2rem;}
+    h1{font-size:1.5rem;margin:0 0 1rem;}
+    .btn{padding:0.5rem 1rem;border-radius:6px;font-size:0.875rem;text-decoration:none;border:none;cursor:pointer;font-family:inherit;}
+    .btn-primary{background:var(--accent);color:#fff;} .btn-ghost{background:transparent;color:var(--text);border:1px solid var(--border);}
+    form label{display:block;margin-bottom:0.25rem;color:var(--muted);} form input,form select{width:100%;max-width:400px;padding:0.5rem 0.75rem;margin-bottom:1rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <%- include('partials/sidebar') %>
+    <main class="main">
+      <h1>Nouveau produit (E, P, date)</h1>
+      <% if (typeof error !== 'undefined' && error) { %><p style="color:#ef4444;"><%= error %></p><% } %>
+      <p>Choisissez la <strong>catégorie</strong> puis le <strong>sous-produit</strong> (les prix sont sur les sous-produits), puis E, P et date. Le stock augmente automatiquement.</p>
+      <form method="post" action="/admin/products/quick" id="quickForm">
+        <div class="form-row"><label>Catégorie</label>
+          <select name="categoryId" id="categoryId" required>
+            <option value="">— Choisir —</option>
+            <% categories.forEach(function(c) { %>
+            <option value="<%= c.id %>"><%= c.nom %></option>
+            <% }); %>
+          </select>
+        </div>
+        <div class="form-row" id="subRow" style="display:none;"><label>Sous-produit <span style="color:var(--muted);">(obligatoire)</span></label>
+          <select name="subProductId" id="subProductId">
+            <option value="">— Choisir un sous-produit —</option>
+          </select>
+        </div>
+        <div class="form-row"><label>E</label><input type="text" name="E" placeholder="Identifiant du compte" /></div>
+        <div class="form-row"><label>P</label><input type="text" name="P" placeholder="Mot de passe" /></div>
+        <div class="form-row"><label>Date d'expiration</label><input type="text" name="dateExpiration" placeholder="ex. 15-mars-2026" /></div>
+        <button type="submit" class="btn btn-primary">Ajouter</button>
+        <a href="/admin/products" class="btn btn-ghost">Annuler</a>
+      </form>
+      <script>
+        (function() {
+          var categoriesData = <%- JSON.stringify(categories.map(function(c) { return { id: c.id, subProducts: c.subProducts || [] }; })) %>;
+          var cat = document.getElementById('categoryId');
+          var subRow = document.getElementById('subRow');
+          var subSelect = document.getElementById('subProductId');
+          function updateSubs() {
+            var id = cat.value;
+            var catData = categoriesData.find(function(c) { return c.id === id; });
+            var subs = (catData && catData.subProducts) ? catData.subProducts : [];
+            subSelect.innerHTML = '<option value="">— Choisir un sous-produit —</option>';
+            subs.forEach(function(s) {
+              var o = document.createElement('option');
+              o.value = s.id;
+              o.textContent = s.nom + ' — ' + s.prixMois + ' FCFA/mois';
+              subSelect.appendChild(o);
+            });
+            subRow.style.display = subs.length ? 'block' : 'none';
+            if (subs.length) subSelect.required = true; else subSelect.required = false;
+          }
+          cat.addEventListener('change', updateSubs);
+          cat.dispatchEvent(new Event('change'));
+          document.getElementById('quickForm').addEventListener('submit', function(e) {
+            if (document.getElementById('subProductId').style.display !== 'none' && !document.getElementById('subProductId').value) {
+              e.preventDefault();
+              alert('Choisissez un sous-produit.');
+              return false;
+            }
+          });
+        })();
+      </script>
+    </main>
+  </div>
+</body>
+</html>

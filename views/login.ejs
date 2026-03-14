@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Connexion — Backoffice MonAbo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'DM Sans', sans-serif;
+      background: #0f0f12;
+      color: #e4e4e7;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .box {
+      width: 100%;
+      max-width: 360px;
+      background: #18181c;
+      border: 1px solid #2a2a2e;
+      border-radius: 12px;
+      padding: 2rem;
+    }
+    h1 { font-size: 1.25rem; margin: 0 0 1.5rem; font-weight: 600; }
+    label { display: block; margin-bottom: 0.35rem; font-size: 0.875rem; color: #71717a; }
+    input {
+      width: 100%;
+      padding: 0.6rem 0.75rem;
+      margin-bottom: 1rem;
+      border: 1px solid #2a2a2e;
+      border-radius: 6px;
+      background: #0f0f12;
+      color: #e4e4e7;
+      font-size: 1rem;
+    }
+    .btn {
+      width: 100%;
+      padding: 0.6rem;
+      border: none;
+      border-radius: 6px;
+      background: #22c55e;
+      color: #fff;
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .btn:hover { background: #16a34a; }
+    .error { color: #ef4444; font-size: 0.9rem; margin-top: 0.5rem; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>Backoffice MonAbo</h1>
+    <form method="post" action="/admin/login">
+      <label for="password">Mot de passe</label>
+      <input type="password" id="password" name="password" required autofocus />
+      <% if (error) { %><p class="error"><%= error %></p><% } %>
+      <button type="submit" class="btn">Connexion</button>
+    </form>
+  </div>
+</body>
+</html>

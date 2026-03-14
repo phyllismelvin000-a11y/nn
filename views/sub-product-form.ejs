@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= subProduct ? 'Modifier' : 'Nouveau' %> sous-produit — <%= category.titreDefaut || category.nom %> — Backoffice MonAbo</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root { --bg:#0f0f12; --card:#18181c; --border:#2a2a2e; --text:#e4e4e7; --muted:#71717a; --accent:#22c55e; }
+    *{box-sizing:border-box;} body{margin:0;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.5;}
+    .app{display:flex;min-height:100vh;} .sidebar{width:220px;background:var(--card);border-right:1px solid var(--border);padding:1.25rem 0;}
+    .sidebar a{display:block;padding:0.6rem 1.25rem;color:var(--muted);text-decoration:none;} .main{flex:1;padding:1.5rem 2rem;}
+    h1{font-size:1.5rem;margin:0 0 1rem;}
+    .btn{padding:0.5rem 1rem;border-radius:6px;font-size:0.875rem;text-decoration:none;border:none;cursor:pointer;font-family:inherit;}
+    .btn-primary{background:var(--accent);color:#fff;} .btn-ghost{background:transparent;color:var(--text);border:1px solid var(--border);}
+    form label{display:block;margin-bottom:0.25rem;color:var(--muted);} form input,form textarea{width:100%;max-width:400px;padding:0.5rem 0.75rem;margin-bottom:1rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <%- include('partials/sidebar') %>
+    <main class="main">
+      <h1><%= subProduct ? 'Modifier le' : 'Nouveau' %> sous-produit — <%= category.titreDefaut || category.nom %></h1>
+      <form method="post" action="<%= subProduct ? '/admin/categories/' + category.id + '/subs/' + subProduct.id + '/edit' : '/admin/categories/' + category.id + '/subs/new' %>">
+        <div class="form-row"><label>Nom (ex. Start, Premium)</label><input type="text" name="nom" required placeholder="Premium" value="<%= subProduct ? (subProduct.nom || '') : '' %>" /></div>
+        <div class="form-row"><label>Prix 1 mois (FCFA)</label><input type="number" name="prixMois" min="0" required value="<%= subProduct ? (subProduct.prixMois ?? 3000) : 3000 %>" /></div>
+        <div class="form-row"><label>Description</label><textarea name="description" rows="2" placeholder="Optionnel"><%= subProduct ? (subProduct.description || '') : '' %></textarea></div>
+        <button type="submit" class="btn btn-primary"><%= subProduct ? 'Enregistrer' : 'Créer' %></button>
+        <a href="/admin/categories/<%= category.id %>/subs" class="btn btn-ghost">Annuler</a>
+      </form>
+    </main>
+  </div>
+</body>
+</html>

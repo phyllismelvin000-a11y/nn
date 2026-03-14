@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= product ? 'Modifier' : 'Nouveau' %> produit — Backoffice MonAbo</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root { --bg:#0f0f12; --card:#18181c; --border:#2a2a2e; --text:#e4e4e7; --muted:#71717a; --accent:#22c55e; --accent-hover:#16a34a; }
+    *{box-sizing:border-box;} body{margin:0;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.5;}
+    .app{display:flex;min-height:100vh;} .sidebar{width:220px;background:var(--card);border-right:1px solid var(--border);padding:1.25rem 0;}
+    .sidebar a{display:block;padding:0.6rem 1.25rem;color:var(--muted);text-decoration:none;font-size:0.9rem;} .sidebar a:hover{color:var(--text);background:rgba(255,255,255,0.04);}
+    .sidebar .brand{padding:0 1.25rem 1rem;font-weight:700;color:var(--text);font-size:1rem;}
+    .main{flex:1;padding:1.5rem 2rem;overflow:auto;}
+    h1{font-size:1.5rem;font-weight:600;margin:0 0 1rem;}
+    .btn{display:inline-block;padding:0.5rem 1rem;border-radius:6px;font-size:0.875rem;font-weight:500;text-decoration:none;border:none;cursor:pointer;font-family:inherit;}
+    .btn-primary{background:var(--accent);color:#fff;} .btn-ghost{background:transparent;color:var(--text);border:1px solid var(--border);}
+    form label{display:block;margin-bottom:0.25rem;font-size:0.875rem;color:var(--muted);}
+    form input,form select,form textarea{width:100%;max-width:400px;padding:0.5rem 0.75rem;margin-bottom:1rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-family:inherit;}
+    .form-row{margin-bottom:1rem;} .logout{margin-top:auto;padding-top:1rem;border-top:1px solid var(--border);}
+    input[type=checkbox]{width:auto;max-width:none;}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <%- include('partials/sidebar') %>
+    <main class="main">
+      <h1><%= product ? 'Modifier le produit' : 'Nouveau produit' %></h1>
+      <form method="post" action="<%= product ? '/admin/products/' + product.id + '/edit' : '/admin/products/new' %>">
+        <div class="form-row"><label>Titre</label><input type="text" name="titre" value="<%= product ? (product.titre || '') : '' %>" required /></div>
+        <div class="form-row"><label>Prix (FCFA)</label><input type="number" name="prix" min="0" value="<%= product ? (product.prix ?? '') : '' %>" required /></div>
+        <div class="form-row"><label>Description</label><textarea name="description" rows="2"><%= product ? (product.description || '') : '' %></textarea></div>
+        <div class="form-row"><label>URL image</label><input type="url" name="imageUrl" value="<%= product ? (product.imageUrl || '') : '' %>" placeholder="https://..." /></div>
+        <div class="form-row"><label>Stock</label><input type="number" name="stock" min="0" value="<%= product ? (product.stock ?? 1) : 1 %>" /></div>
+        <div class="form-row"><label>Catégorie</label>
+          <select name="categorie">
+            <option value="netflix" <%= product && product.categorie === 'netflix' ? 'selected' : '' %>>netflix</option>
+            <option value="onoff" <%= product && product.categorie === 'onoff' ? 'selected' : '' %>>onoff</option>
+          </select>
+        </div>
+        <% if (product) { %>
+        <div class="form-row"><label><input type="checkbox" name="actif" <%= product.actif !== false ? 'checked' : '' %> /> Produit actif (visible dans le catalogue)</label></div>
+        <% } %>
+        <div class="form-row"><label>E (optionnel)</label><input type="text" name="E" value="<%= product ? (product.E || '') : '' %>" /></div>
+        <div class="form-row"><label>P (optionnel)</label><input type="text" name="P" value="<%= product ? (product.P || '') : '' %>" /></div>
+        <div class="form-row"><label>Date expiration (optionnel)</label><input type="text" name="dateExpiration" value="<%= product ? (product.dateExpiration || '') : '' %>" placeholder="ex: 15-mars-2026" /></div>
+        <div class="actions">
+          <button type="submit" class="btn btn-primary"><%= product ? 'Enregistrer' : 'Créer' %></button>
+          <a href="/admin/products" class="btn btn-ghost">Annuler</a>
+        </div>
+      </form>
+    </main>
+  </div>
+</body>
+</html>

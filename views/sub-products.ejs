@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sous-produits — <%= category.titreDefaut || category.nom %> — Backoffice MonAbo</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root { --bg:#0f0f12; --card:#18181c; --border:#2a2a2e; --text:#e4e4e7; --muted:#71717a; --accent:#22c55e; }
+    *{box-sizing:border-box;} body{margin:0;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.5;}
+    .app{display:flex;min-height:100vh;} .sidebar{width:220px;background:var(--card);border-right:1px solid var(--border);padding:1.25rem 0;}
+    .sidebar a{display:block;padding:0.6rem 1.25rem;color:var(--muted);text-decoration:none;} .main{flex:1;padding:1.5rem 2rem;}
+    h1{font-size:1.5rem;margin:0 0 0.5rem;} .muted{color:var(--muted);font-size:0.9rem;margin-bottom:1rem;}
+    table{width:100%;border-collapse:collapse;} th,td{padding:0.6rem 0.75rem;text-align:left;border-bottom:1px solid var(--border);} th{color:var(--muted);font-weight:500;}
+    .btn{padding:0.5rem 1rem;border-radius:6px;font-size:0.875rem;text-decoration:none;border:none;cursor:pointer;font-family:inherit;}
+    .btn-primary{background:var(--accent);color:#fff;} .btn-ghost{background:transparent;color:var(--text);border:1px solid var(--border);}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <%- include('partials/sidebar') %>
+    <main class="main">
+      <h1><%= category.titreDefaut || category.nom %></h1>
+      <p class="muted">Sous-produits (ex. Start, Premium). Chaque sous-produit a son prix 1 mois et sa description. Pour ajouter du stock : E, P, date dans « Ajout rapide » en choisissant ce catalogue puis ce sous-produit.</p>
+      <p><a href="/admin/categories/<%= category.id %>/subs/new" class="btn btn-primary">Nouveau sous-produit</a> <a href="/admin/categories" class="btn btn-ghost">Retour catalogues</a></p>
+      <table>
+        <thead><tr><th>Nom</th><th>Prix 1 mois (FCFA)</th><th>Description</th><th>Actions</th></tr></thead>
+        <tbody>
+          <% subProducts.forEach(function(s) { %>
+          <tr>
+            <td><%= s.nom %></td>
+            <td><%= s.prixMois %></td>
+            <td><%= (s.description || '').slice(0, 80) %><%= (s.description && s.description.length > 80) ? '…' : '' %></td>
+            <td><a href="/admin/categories/<%= category.id %>/subs/<%= s.id %>/edit" class="btn btn-ghost" style="padding:0.35rem 0.65rem;font-size:0.8rem;">Modifier</a></td>
+          </tr>
+          <% }); %>
+          <% if (subProducts.length === 0) { %><tr><td colspan="4" style="color:var(--muted);">Aucun sous-produit. Le catalogue seul peut être utilisé pour l’ajout rapide.</td></tr><% } %>
+        </tbody>
+      </table>
+    </main>
+  </div>
+</body>
+</html>

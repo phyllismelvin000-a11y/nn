@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Commandes — Backoffice MonAbo</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root { --bg:#0f0f12; --card:#18181c; --border:#2a2a2e; --text:#e4e4e7; --muted:#71717a; --accent:#22c55e; --danger:#ef4444; }
+    *{box-sizing:border-box;} body{margin:0;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.5;}
+    .app{display:flex;min-height:100vh;} .sidebar{width:220px;background:var(--card);border-right:1px solid var(--border);padding:1.25rem 0;}
+    .sidebar a{display:block;padding:0.6rem 1.25rem;color:var(--muted);text-decoration:none;font-size:0.9rem;} .sidebar a:hover{color:var(--text);background:rgba(255,255,255,0.04);}
+    .sidebar .brand{padding:0 1.25rem 1rem;font-weight:700;color:var(--text);font-size:1rem;}
+    .main{flex:1;padding:1.5rem 2rem;overflow:auto;}
+    h1{font-size:1.5rem;font-weight:600;margin:0 0 1rem;}
+    table{width:100%;border-collapse:collapse;font-size:0.9rem;} th,td{padding:0.6rem 0.75rem;text-align:left;border-bottom:1px solid var(--border);} th{color:var(--muted);font-weight:500;}
+    .btn{display:inline-block;padding:0.35rem 0.65rem;border-radius:6px;font-size:0.8rem;font-weight:500;text-decoration:none;border:none;cursor:pointer;font-family:inherit;}
+    .btn-primary{background:var(--accent);color:#fff;} .btn-danger{background:var(--danger);color:#fff;}
+    .btn-ghost{background:transparent;color:var(--text);border:1px solid var(--border);} .btn-ghost:hover{background:rgba(255,255,255,0.06);}
+    .badge{display:inline-block;padding:0.2rem 0.5rem;border-radius:4px;font-size:0.75rem;font-weight:500;}
+    .badge-en_attente{background:rgba(234,179,8,0.2);color:#eab308;} .badge-confirmee{background:rgba(34,197,94,0.2);color:#22c55e;}
+    .badge-livree{background:rgba(59,130,246,0.2);color:#3b82f6;} .badge-annulee{background:rgba(239,68,68,0.2);color:#ef4444;}
+    .filters{margin-bottom:1rem;} .filters a{margin-right:0.5rem;color:var(--muted);text-decoration:none;} .filters a:hover,.filters a.active{color:var(--accent);}
+    .logout{margin-top:auto;padding-top:1rem;border-top:1px solid var(--border);}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <%- include('partials/sidebar') %>
+    <main class="main">
+      <h1>Commandes</h1>
+      <div class="filters">
+        <a href="/admin/orders" class="<%= !currentStatus ? 'active' : '' %>">Toutes</a>
+        <a href="/admin/orders?status=en_cours" class="<%= currentStatus === 'en_cours' ? 'active' : '' %>">En cours</a>
+        <a href="/admin/orders?status=en_attente" class="<%= currentStatus === 'en_attente' ? 'active' : '' %>">En attente</a>
+        <a href="/admin/orders?status=confirmee" class="<%= currentStatus === 'confirmee' ? 'active' : '' %>">Confirmées</a>
+        <a href="/admin/orders?status=livree" class="<%= currentStatus === 'livree' ? 'active' : '' %>">Livrées</a>
+        <a href="/admin/orders?status=annulee" class="<%= currentStatus === 'annulee' ? 'active' : '' %>">Annulées</a>
+      </div>
+      <% if (typeof totalCount !== 'undefined' && totalCount > 0) { %>
+      <p class="pagination-info" style="color:var(--muted);font-size:0.875rem;margin-bottom:0.5rem;">
+        <%= totalCount %> commande(s) — page <%= page %> / <%= totalPages %>
+      </p>
+      <% } %>
+      <table>
+        <thead><tr><th>Réf.</th><th>Client</th><th>Produit / Montant</th><th>Statut</th><th>Date</th><th>Actions</th></tr></thead>
+        <tbody>
+          <% orders.forEach(function(o) {
+            const qte = o.produit?.quantite ?? 1;
+            const total = o.produit?.total ?? o.produit?.prix;
+            const produitStr = qte > 1 ? `${o.produit?.titre} x${qte} = ${total} F` : `${o.produit?.titre} — ${total} F`;
+            const created = o.createdAt?.toMillis ? new Date(o.createdAt.toMillis()).toLocaleString('fr-FR') : (o.createdAt || '-');
+          %>
+          <tr>
+            <td><%= o.refCommande || o.id %></td>
+            <td>@<%= o.username || o.userId %></td>
+            <td><%= produitStr %></td>
+            <td><span class="badge badge-<%= o.status %>"><%= o.status %></span></td>
+            <td><%= created %></td>
+            <td>
+              <% if (o.status === STATUS.CONFIRMEE || o.status === STATUS.EN_ATTENTE) { %>
+              <form method="post" action="/admin/orders/<%= o.id %>/status" style="display:inline;">
+                <input type="hidden" name="status" value="livree" />
+                <button type="submit" class="btn btn-primary">Livré</button>
+              </form>
+              <form method="post" action="/admin/orders/<%= o.id %>/status" style="display:inline;margin-left:4px;" onsubmit="return confirm('Êtes-vous sûr de vouloir annuler cette commande ?');">
+                <input type="hidden" name="status" value="annulee" />
+                <button type="submit" class="btn btn-danger">Annuler</button>
+              </form>
+              <% } else { %>—<% } %>
+            </td>
+          </tr>
+          <% }); %>
+          <% if (orders.length === 0) { %><tr><td colspan="6" style="color:var(--muted);">Aucune commande</td></tr><% } %>
+        </tbody>
+      </table>
+      <% if (typeof totalPages !== 'undefined' && totalPages > 1) { %>
+      <nav class="pagination" style="margin-top:1.5rem;display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+        <% const q = currentStatus ? '?status=' + encodeURIComponent(currentStatus) + '&' : '?'; %>
+        <% if (page > 1) { %>
+        <a href="/admin/orders<%= q %>page=<%= page - 1 %>" class="btn btn-ghost">← Précédent</a>
+        <% } %>
+        <span style="color:var(--muted);font-size:0.9rem;">Page <%= page %> / <%= totalPages %></span>
+        <% if (page < totalPages) { %>
+        <a href="/admin/orders<%= q %>page=<%= page + 1 %>" class="btn btn-ghost">Suivant →</a>
+        <% } %>
+      </nav>
+      <% } %>
+    </main>
+  </div>
+</body>
+</html>

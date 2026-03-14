@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Produits — Backoffice MonAbo</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root { --bg:#0f0f12; --card:#18181c; --border:#2a2a2e; --text:#e4e4e7; --muted:#71717a; --accent:#22c55e; --accent-hover:#16a34a; }
+    *{box-sizing:border-box;} body{margin:0;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.5;}
+    .app{display:flex;min-height:100vh;} .sidebar{width:220px;background:var(--card);border-right:1px solid var(--border);padding:1.25rem 0;}
+    .sidebar a{display:block;padding:0.6rem 1.25rem;color:var(--muted);text-decoration:none;font-size:0.9rem;} .sidebar a:hover{color:var(--text);background:rgba(255,255,255,0.04);}
+    .sidebar .brand{padding:0 1.25rem 1rem;font-weight:700;color:var(--text);font-size:1rem;}
+    .main{flex:1;padding:1.5rem 2rem;overflow:auto;}
+    h1{font-size:1.5rem;font-weight:600;margin:0 0 1rem;}
+    table{width:100%;border-collapse:collapse;font-size:0.9rem;} th,td{padding:0.6rem 0.75rem;text-align:left;border-bottom:1px solid var(--border);} th{color:var(--muted);font-weight:500;}
+    .btn{display:inline-block;padding:0.5rem 1rem;border-radius:6px;font-size:0.875rem;font-weight:500;text-decoration:none;border:none;cursor:pointer;font-family:inherit;}
+    .btn-primary{background:var(--accent);color:#fff;} .btn-primary:hover{background:var(--accent-hover);}
+    .btn-ghost{background:transparent;color:var(--text);border:1px solid var(--border);} .btn-ghost:hover{background:rgba(255,255,255,0.06);}
+    .badge{display:inline-block;padding:0.2rem 0.5rem;border-radius:4px;font-size:0.75rem;} .badge-actif{background:rgba(34,197,94,0.2);color:#22c55e;} .badge-inactif{background:rgba(113,113,122,0.3);color:#71717a;}
+    .logout{margin-top:auto;padding-top:1rem;border-top:1px solid var(--border);}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <%- include('partials/sidebar') %>
+    <main class="main">
+      <h1>Produits</h1>
+      <p><a href="/admin/products/new" class="btn btn-primary">Nouveau produit</a></p>
+      <p style="margin-top:0;color:var(--muted);font-size:0.875rem;">Catalogue → sous-produit (optionnel) → E, P, date. Le stock se remplit automatiquement.</p>
+      <table>
+        <thead><tr><th>Titre</th><th>Prix</th><th>Catégorie</th><th>Stock</th><th>Actif</th><th>Actions</th></tr></thead>
+        <tbody>
+          <% products.forEach(function(p) { %>
+          <tr>
+            <td><%= p.titre %></td>
+            <td><%= p.prix %> FCFA</td>
+            <td><%= p.categorie || 'netflix' %></td>
+            <td><%= p.stock ?? 0 %></td>
+            <td><span class="badge badge-<%= p.actif !== false ? 'actif' : 'inactif' %>"><%= p.actif !== false ? 'Oui' : 'Non' %></span></td>
+            <td><a href="/admin/products/<%= p.id %>/edit" class="btn btn-ghost" style="padding:0.35rem 0.65rem;font-size:0.8rem;">Modifier</a></td>
+          </tr>
+          <% }); %>
+          <% if (products.length === 0) { %><tr><td colspan="6" style="color:var(--muted);">Aucun produit. <a href="/admin/products/new" style="color:var(--accent);">Ajouter un produit</a></td></tr><% } %>
+        </tbody>
+      </table>
+    </main>
+  </div>
+</body>
+</html>
