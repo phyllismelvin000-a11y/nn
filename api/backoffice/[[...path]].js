@@ -1,9 +1,13 @@
-// Vercel serverless : sert le backoffice Express. Rewrite /admin* -> /api/backoffice*
+// Vercel serverless : /api/backoffice/xxx (ex. /admin/dashboard)
 const { app } = require('../../backoffice');
 
 module.exports = (req, res) => {
-  const base = '/api/backoffice';
-  const path = (req.url && req.url.startsWith(base)) ? req.url.slice(base.length) || '/' : '/';
+  let path = '/';
+  if (req.url && req.url.startsWith('/api/backoffice')) {
+    path = req.url.slice('/api/backoffice'.length) || '/';
+  } else if (req.url && req.url.startsWith('/admin')) {
+    path = req.url.slice('/admin'.length) || '/';
+  }
   req.url = '/admin' + (path === '/' ? '' : path);
   app(req, res);
 };
