@@ -380,6 +380,16 @@ async function sendOrderWithWave(ctx, product, quantity, dureeMois = null) {
     await ctx.reply(msg.client.adminNoOrderHere);
     return;
   }
+  // Avant d'envoyer le lien de paiement : vérifier le stock. Pas de lien si rupture.
+  const freshProduct = await getProductById(product.id);
+  if (!freshProduct) {
+    return ctx.reply('Produit indisponible.');
+  }
+  const stock = Math.max(0, freshProduct.stock ?? 0);
+  if (stock < quantity) {
+    const text = stock === 0 ? msg.catalogue.noStockNoLink : msg.catalogue.noStockNoLinkCount(stock);
+    return ctx.reply(text);
+  }
   const userId = ctx.from.id;
   const username = ctx.from.username || ctx.from.first_name || 'Client';
   const order = await createOrder({
@@ -467,7 +477,8 @@ bot.action(/^netflix_(1|2|3|6|12)$/, async (ctx) => {
   const products = await getActiveProductsByCategory('netflix');
   const product = products[0];
   if (!product) return ctx.answerCbQuery('Indisponible.');
-  const stock = Math.max(0, product.stock ?? 999);
+  const stock = Math.max(0, product.stock ?? 0);
+  if (stock === 0) return ctx.answerCbQuery('Rupture de stock.');
   if (months > stock) return ctx.answerCbQuery(`Stock insuffisant (${stock}).`);
   await ctx.answerCbQuery();
   try {
@@ -559,7 +570,11 @@ bot.action(/^onoff_premium_(1|2|3)$/, async (ctx) => {
   const products = await getActiveProductsByCategory('onoff');
   const product = products.find(p => (p.titre || '').toLowerCase().includes('premium'));
   if (!product) return ctx.answerCbQuery('Indisponible.');
-  const stock = Math.max(0, product.stock ?? 999);
+  const stock = Math.max(0, product.stock ?? 0);
+  if (stock === 0) {
+    const text = `📦 <b>Onoff Premium</b> — ${product.prix} FCFA/mois\n\n⚠️ Rupture de stock. Plus disponible pour le moment.`;
+    return editCaptionOrText(ctx, text, Markup.inlineKeyboard([[Markup.button.callback('◀️ Retour', 'onoff_show_duration_premium')]]));
+  }
   const maxQty = Math.min(ONOFF_MAX_QTY, stock);
   const text = `📦 <b>Onoff Premium</b> — ${product.prix} FCFA/mois\n<b>Durée :</b> ${months} mois\n<b>Stock disponible :</b> ${stock}\n\nChoisissez la quantité (max ${ONOFF_MAX_QTY}) :`;
   const row = [];
@@ -587,7 +602,11 @@ bot.action(/^onoff_start_(1|2|3)$/, async (ctx) => {
   const products = await getActiveProductsByCategory('onoff');
   const product = products.find(p => (p.titre || '').toLowerCase().includes('start'));
   if (!product) return ctx.answerCbQuery('Indisponible.');
-  const stock = Math.max(0, product.stock ?? 999);
+  const stock = Math.max(0, product.stock ?? 0);
+  if (stock === 0) {
+    const text = `📦 <b>Onoff Start</b> — ${product.prix} FCFA/mois\n\n⚠️ Rupture de stock. Plus disponible pour le moment.`;
+    return editCaptionOrText(ctx, text, Markup.inlineKeyboard([[Markup.button.callback('◀️ Retour', 'onoff_show_duration_start')]]));
+  }
   const maxQty = Math.min(ONOFF_MAX_QTY, stock);
   const text = `📦 <b>Onoff Start</b> — ${product.prix} FCFA/mois\n<b>Durée :</b> ${months} mois\n<b>Stock disponible :</b> ${stock}\n\nChoisissez la quantité (max ${ONOFF_MAX_QTY}) :`;
   const row = [];
@@ -616,7 +635,7 @@ bot.action(/^onoff_premium_(1|2|3)_(\d+)$/, async (ctx) => {
   const products = await getActiveProductsByCategory('onoff');
   const product = products.find(p => (p.titre || '').toLowerCase().includes('premium'));
   if (!product) return ctx.answerCbQuery('Indisponible.');
-  const stock = Math.max(0, product.stock ?? 999);
+  const stock = Math.max(0, product.stock ?? 0);
   if (qty > stock) return ctx.answerCbQuery(`Stock insuffisant (${stock}).`);
   await ctx.answerCbQuery();
   try {
@@ -631,7 +650,7 @@ bot.action(/^onoff_start_(1|2|3)_(\d+)$/, async (ctx) => {
   const products = await getActiveProductsByCategory('onoff');
   const product = products.find(p => (p.titre || '').toLowerCase().includes('start'));
   if (!product) return ctx.answerCbQuery('Indisponible.');
-  const stock = Math.max(0, product.stock ?? 999);
+  const stock = Math.max(0, product.stock ?? 0);
   if (qty > stock) return ctx.answerCbQuery(`Stock insuffisant (${stock}).`);
   await ctx.answerCbQuery();
   try {
@@ -707,7 +726,7 @@ bot.action(/^cmd_(.+)$/, async (ctx) => {
   if (!product) {
     return ctx.answerCbQuery('Produit indisponible.');
   }
-  const stock = Math.max(0, product.stock ?? 999);
+  const stock = Math.max(0, product.stock ?? 0);
   if (stock === 0) {
     return ctx.answerCbQuery('Rupture de stock.');
   }
@@ -737,9 +756,17 @@ bot.action(/^qty_(.+)_(\d+)$/, async (ctx) => {
   if (!product) {
     return ctx.answerCbQuery('Produit indisponible.');
   }
-  const stock = Math.max(0, product.stock ?? 999);
+  const stock = Math.max(0, product.stock ?? 0);
   if (quantity > stock) {
     return ctx.answerCbQuery(`Stock insuffisant (disponible: ${stock}).`);
+  }
+  // Avant d'envoyer le lien de paiement : vérifier le stock. Pas de lien si rupture.
+  const freshProduct = await getProductById(productId);
+  const freshStock = Math.max(0, freshProduct?.stock ?? 0);
+  if (freshStock < quantity) {
+    await ctx.answerCbQuery();
+    const text = freshStock === 0 ? msg.catalogue.noStockNoLink : msg.catalogue.noStockNoLinkCount(freshStock);
+    return ctx.reply(text);
   }
   const userId = ctx.from.id;
   const username = ctx.from.username || ctx.from.first_name || 'Client';
@@ -807,8 +834,22 @@ bot.on('photo', async (ctx) => {
   const qteToDeduct = order.produit?.quantite ?? 1;
   if (product?.catalogueId != null) {
     const deliveryData = await reserveCompteForOrder(order.produit.id);
-    if (deliveryData) await updateOrderDeliveryData(order.id, { E: deliveryData.E, P: deliveryData.P, dateExpiration: deliveryData.dateExpiration });
+    if (!deliveryData) {
+      await updateOrderStatus(order.id, STATUS.ANNULEE);
+      await ctx.reply(msg.client.outOfStockCancelled(order.refCommande));
+      console.log(`[${logHorodatage()}] Commande ${order.refCommande} annulée (rupture de stock, pas de compte disponible)`);
+      return;
+    }
+    await updateOrderDeliveryData(order.id, { E: deliveryData.E, P: deliveryData.P, dateExpiration: deliveryData.dateExpiration });
   } else if (order.produit?.id && qteToDeduct > 0) {
+    const productForStock = await getProductById(order.produit.id);
+    const available = Math.max(0, productForStock?.stock ?? 0);
+    if (available < qteToDeduct) {
+      await updateOrderStatus(order.id, STATUS.ANNULEE);
+      await ctx.reply(msg.client.outOfStockCancelled(order.refCommande));
+      console.log(`[${logHorodatage()}] Commande ${order.refCommande} annulée (rupture de stock)`);
+      return;
+    }
     await decrementStock(order.produit.id, qteToDeduct);
   }
   await updateOrderStatus(order.id, STATUS.CONFIRMEE);
@@ -973,6 +1014,11 @@ bot.action(/^livree_(.+)$/, async (ctx) => {
   const orderId = ctx.match[1];
   const order = await getOrderById(orderId);
   if (!order) return ctx.answerCbQuery('Commande introuvable.');
+  // Ne pas renvoyer le compte si déjà livrée (double clic ou rappel)
+  if (order.status === STATUS.LIVREE) {
+    await ctx.answerCbQuery('Déjà livrée.');
+    return;
+  }
   await updateOrderStatus(orderId, STATUS.LIVREE);
   console.log(`[${logHorodatage()}] Commande ${orderId} → livrée (client notifié)`);
   await ctx.answerCbQuery('Marquée livrée.');

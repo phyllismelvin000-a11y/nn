@@ -1,5 +1,6 @@
 require('dotenv').config();
 const path = require('path');
+const fs = require('fs');
 const express = require('express');
 const session = require('express-session');
 const { initFirebase } = require('./firebase');
@@ -72,6 +73,7 @@ if (useFileStore) {
   try {
     const FileStore = require('session-file-store')(session);
     const sessionPath = process.env.SESSION_PATH || path.join(__dirname, 'data', 'sessions');
+    fs.mkdirSync(sessionPath, { recursive: true });
     sessionStore = new FileStore({ path: sessionPath, ttl: 24 * 60 * 60 });
   } catch (e) {
     console.warn('Session file store non disponible, utilisation du store mémoire:', e.message);
@@ -328,11 +330,12 @@ app.post('/admin/orders/:id/status', async (req, res) => {
     if (qte > 0) await incrementStock(order.produit.id, qte);
   }
 
+  const wasAlreadyLivree = order.status === STATUS.LIVREE;
   await updateOrderStatus(id, status);
 
   if (botInstance && order.userId) {
     try {
-      if (status === STATUS.LIVREE) {
+      if (status === STATUS.LIVREE && !wasAlreadyLivree) {
         const qte = order.produit?.quantite ?? 1;
         const detail = qte > 1 ? `${order.produit?.titre} x${qte}` : order.produit?.titre;
         let msg = `Votre commande ${order.refCommande} (${detail}) a été livrée. Merci !`;
