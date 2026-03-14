@@ -19,6 +19,7 @@ const { isAdmin, getAdminChatId } = require('./middleware/auth');
 const { pendingOrderImageOnly } = require('./middleware/pendingOrder');
 const { saveUser, getUserByUserId, getUsers, getUsersCount } = require('./users');
 const { schedulePaymentReminderAndCancel, runPaymentTimeoutRecovery } = require('./lib/paymentTimers');
+const { checkAndSendReplenishmentAlert } = require('./lib/stockAlert');
 const msg = require('./lib/messages');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -986,6 +987,7 @@ bot.on('text', async (ctx) => {
       }
       const product = await addProductFromSubProduct(state.categoryId, state.subProductId, payload);
       console.log(`[${logHorodatage()}] Produit ajouté : ${product.titre} — ${product.prix} FCFA, stock ${product.stock}`);
+      checkAndSendReplenishmentAlert(bot, product.id, product.titre).catch(e => console.error('Erreur alerte réassort:', e.message));
       return ctx.reply(`Produit ajouté : ${product.titre} — ${product.prix} FCFA (stock ${product.stock}). E/P/date enregistrés.`);
     } catch (e) {
       console.error('Erreur ajout produit:', e.message);

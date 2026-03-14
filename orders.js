@@ -131,6 +131,25 @@ async function getLastOrderByUser(userId) {
   });
 }
 
+/**
+ * Liste des userId distincts ayant passé au moins une commande (pour envoi d'alertes).
+ */
+async function getDistinctOrderUserIds(limit = 3000) {
+  return withRetry(async () => {
+    const db = getDb();
+    const snap = await db.collection(COLLECTION)
+      .orderBy('createdAt', 'desc')
+      .limit(limit)
+      .get();
+    const ids = new Set();
+    snap.docs.forEach(doc => {
+      const uid = doc.data().userId;
+      if (uid) ids.add(String(uid));
+    });
+    return Array.from(ids);
+  });
+}
+
 module.exports = {
   STATUS,
   createOrder,
@@ -141,4 +160,5 @@ module.exports = {
   updateOrderDeliveryData,
   getLast10Orders,
   getOrders,
+  getDistinctOrderUserIds,
 };

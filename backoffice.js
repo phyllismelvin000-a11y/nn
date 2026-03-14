@@ -26,6 +26,7 @@ const {
 const { getProductById: getProductForOrder } = require('./catalogue');
 const { incrementStock } = require('./catalogue');
 const { getUsers, getUsersCount } = require('./users');
+const { checkAndSendReplenishmentAlert } = require('./lib/stockAlert');
 
 initFirebase();
 
@@ -196,7 +197,10 @@ app.post('/admin/products/quick', async (req, res) => {
     const categoriesWithSubs = await Promise.all(categories.map(async (c) => ({ ...c, subProducts: await getSubProducts(c.id) })));
     return res.render('product-quick', { categories: categoriesWithSubs, error: 'Choisissez un sous-produit.' });
   }
-  await addProductFromSubProduct(categoryId, subId, { E: (E || '').trim(), P: (P || '').trim(), dateExpiration: (dateExpiration || '').trim() });
+  const product = await addProductFromSubProduct(categoryId, subId, { E: (E || '').trim(), P: (P || '').trim(), dateExpiration: (dateExpiration || '').trim() });
+  if (botInstance && product?.id) {
+    checkAndSendReplenishmentAlert(botInstance, product.id, product.titre).catch(e => console.error('Erreur alerte réassort:', e.message));
+  }
   res.redirect('/admin/products');
 });
 
