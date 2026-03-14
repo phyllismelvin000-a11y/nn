@@ -1,9 +1,6 @@
 require('dotenv').config();
 const path = require('path');
-const fs = require('fs');
 const express = require('express');
-const _logPath = path.join(__dirname, '..', 'debug-29a20c.log');
-function _dbg(payload) { try { fs.appendFileSync(_logPath, JSON.stringify(payload) + '\n'); } catch (_) {} }
 const session = require('express-session');
 const { initFirebase } = require('./firebase');
 const {
@@ -344,32 +341,17 @@ app.post('/admin/orders/:id/status', async (req, res) => {
 });
 
 function startBackoffice(opts = {}) {
-  // #region agent log
-  _dbg({sessionId:'29a20c',location:'backoffice.js:startBackoffice',message:'entry',data:{hasPassword:!!PASSWORD,passwordLen:PASSWORD?PASSWORD.length:0},timestamp:Date.now(),hypothesisId:'A'});
-  // #endregion
   const fromBot = opts.fromBot === true;
   if (!PASSWORD) {
-    // #region agent log
-    _dbg({sessionId:'29a20c',location:'backoffice.js:startBackoffice-early-return',message:'early return no PASSWORD',data:{},timestamp:Date.now(),hypothesisId:'A'});
-    // #endregion
     if (!fromBot) console.log('  Backoffice non démarré (BACKOFFICE_PASSWORD non défini).');
     return;
   }
-  // #region agent log
-  _dbg({sessionId:'29a20c',location:'backoffice.js:before-listen',message:'calling app.listen',data:{port:PORT},timestamp:Date.now(),hypothesisId:'C'});
-  // #endregion
   return new Promise((resolve, reject) => {
     const server = app.listen(PORT, '0.0.0.0', () => {
-      // #region agent log
-      _dbg({sessionId:'29a20c',location:'backoffice.js:listen-callback',message:'listen callback ran',data:{port:PORT},timestamp:Date.now(),hypothesisId:'C'});
-      // #endregion
       console.log('  Backoffice démarré : http://localhost:' + PORT + '/admin');
       resolve();
     });
     server.on('error', (err) => {
-      // #region agent log
-      _dbg({sessionId:'29a20c',location:'backoffice.js:server-error',message:'server error',data:{code:err.code,message:err.message},timestamp:Date.now(),hypothesisId:'D'});
-      // #endregion
       if (err.code === 'EADDRINUSE') {
         console.error('  Erreur backoffice : le port ' + PORT + ' est déjà utilisé. Ferme l\'autre processus ou change BACKOFFICE_PORT dans .env');
       } else {

@@ -1,8 +1,4 @@
 require('dotenv').config();
-const path = require('path');
-const fs = require('fs');
-const _dbgLogPath = path.join(__dirname, '..', 'debug-29a20c.log');
-function _dbg(p) { try { fs.appendFileSync(_dbgLogPath, JSON.stringify(p) + '\n'); } catch (_) {} }
 const { Telegraf, Markup } = require('telegraf');
 const { initFirebase, getDb } = require('./firebase');
 const { getActiveProducts, getActiveProductsByCategory, getProductById, addProduct, addProductFromCategory, addProductFromSubProduct, reserveCompteForOrder, decrementStock, incrementStock } = require('./catalogue');
@@ -948,13 +944,7 @@ async function start() {
   }
   // Démarrer le backoffice tout de suite (avant le bot) pour qu'il soit dispo même si le bot bloque
   const backoffice = require('./backoffice');
-  // #region agent log
-  _dbg({sessionId:'29a20c',location:'index.js:after-require-backoffice',message:'env BACKOFFICE_PASSWORD',data:{backofficePasswordSet:!!process.env.BACKOFFICE_PASSWORD},timestamp:Date.now(),hypothesisId:'A'});
-  // #endregion
   await (backoffice.startBackoffice({ fromBot: true }) || Promise.resolve());
-  // #region agent log
-  _dbg({sessionId:'29a20c',location:'index.js:after-startBackoffice',message:'startBackoffice returned',data:{},timestamp:Date.now(),hypothesisId:'B'});
-  // #endregion
   const backofficePort = Number(process.env.PORT) || Number(process.env.BACKOFFICE_PORT) || 3000;
   if (process.env.BACKOFFICE_PASSWORD) {
     console.log('  Backoffice : http://localhost:' + backofficePort + '/admin');
