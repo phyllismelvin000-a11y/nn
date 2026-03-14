@@ -19,8 +19,10 @@ const { isAdmin, getAdminChatId } = require('./middleware/auth');
 const { pendingOrderImageOnly } = require('./middleware/pendingOrder');
 const { saveUser, getUserByUserId, getUsers, getUsersCount } = require('./users');
 const { schedulePaymentReminderAndCancel, runPaymentTimeoutRecovery } = require('./lib/paymentTimers');
-const { checkAndSendReplenishmentAlert } = require('./lib/stockAlert');
+const { checkAndSendReplenishmentAlert, getAllUserIdsToNotify } = require('./lib/stockAlert');
 const msg = require('./lib/messages');
+
+const announcementState = { step: null, text: null };
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const ADMIN_CHAT_ID = getAdminChatId();
@@ -147,6 +149,7 @@ function getAdminMenuContent() {
   }
   rows.push([Markup.button.callback('📦 Stock / comptes disponibles', 'admin_stock')]);
   rows.push([Markup.button.callback('👥 Voir utilisateurs', 'admin_users')]);
+  rows.push([Markup.button.callback('📢 Créer une annonce', 'admin_annonce')]);
   const keyboard = Markup.inlineKeyboard(rows);
   return { text, keyboard };
 }
@@ -199,6 +202,75 @@ bot.on('contact', async (ctx) => {
     return ctx.reply(msg.client.welcome, mainMenuKeyboard);
   }
   return ctx.reply(msg.client.countryNotAllowed);
+});
+
+// ——— Annonce admin : en attente du texte
+bot.use((ctx, next) => {
+  if (ctx.message?.text && isAdmin(ctx) && announcementState.step === 'awaiting_text') {
+    announcementState.text = ctx.message.text;
+    announcementState.step = 'awaiting_confirm';
+    const raw = ctx.message.text.slice(0, 300) + (ctx.message.text.length > 300 ? '…' : '');
+    const preview = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return ctx.reply(
+      `📢 <b>Annonce à envoyer à tous les utilisateurs</b>\n\n<pre>${preview}</pre>\n\nConfirmer l'envoi ?`,
+      {
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('✅ Envoyer l\'annonce', 'annonce_confirm')],
+          [Markup.button.callback('❌ Annuler', 'annonce_cancel')],
+        ]),
+      }
+    );
+  }
+  return next();
+});
+
+bot.command('annonce', (ctx) => {
+  if (!isAdmin(ctx)) return;
+  announcementState.step = 'awaiting_text';
+  announcementState.text = null;
+  return ctx.reply('📢 Envoyez le texte de l\'annonce (un seul message). Elle sera diffusée à tous les utilisateurs du bot.');
+});
+
+bot.action('admin_annonce', async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!isAdmin(ctx)) return;
+  announcementState.step = 'awaiting_text';
+  announcementState.text = null;
+  return ctx.reply('📢 Envoyez le texte de l\'annonce (un seul message). Elle sera diffusée à tous les utilisateurs du bot.');
+});
+
+bot.action('annonce_confirm', async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!isAdmin(ctx)) return;
+  if (announcementState.step !== 'awaiting_confirm' || !announcementState.text) {
+    announcementState.step = null;
+    announcementState.text = null;
+    return ctx.reply('Annonce annulée ou expirée.');
+  }
+  const text = announcementState.text;
+  announcementState.step = null;
+  announcementState.text = null;
+  const userIds = await getAllUserIdsToNotify();
+  let sent = 0;
+  let failed = 0;
+  for (const userId of userIds) {
+    try {
+      await ctx.telegram.sendMessage(userId, text);
+      sent++;
+    } catch (e) {
+      failed++;
+    }
+  }
+  await ctx.reply(`✅ Annonce envoyée à <b>${sent}</b> utilisateur(s)${failed ? ` (${failed} échec(s))` : ''}.`, { parse_mode: 'HTML' });
+});
+
+bot.action('annonce_cancel', async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!isAdmin(ctx)) return;
+  announcementState.step = null;
+  announcementState.text = null;
+  return ctx.reply('Annonce annulée.');
 });
 
 // Tap sur le bouton "Menu" ou "Catalogue" du clavier = pas besoin de taper /menu ou /catalogue
