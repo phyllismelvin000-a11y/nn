@@ -23,7 +23,7 @@ function initFirebase() {
       console.error('   Local : place serviceAccountKey.json dans le projet.');
       console.error('   Vercel : ajoute la variable FIREBASE_SERVICE_ACCOUNT (JSON complet) dans les paramètres du projet.');
       console.error('');
-      if (process.env.VERCEL) throw new Error('Firebase credentials missing. Set FIREBASE_SERVICE_ACCOUNT in Vercel → Settings → Environment Variables (full JSON key).');
+      if (process.env.VERCEL) throw new Error('Firebase credentials missing');
       process.exit(1);
     }
     serviceAccount = require(keyPath);

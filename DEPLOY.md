@@ -16,8 +16,6 @@
   ```
   Suivre les questions (lien au projet, build, etc.).
 
-**Important — Si tu as un 404 en prod :** Si le code (dossier `api/`, `vercel.json`, `package.json`) est dans un **sous-dossier** du repo (ex. `telegram-bot/`), dans Vercel va dans **Settings → General → Root Directory** et indique ce dossier (ex. `telegram-bot`). Puis redéploie. Sinon Vercel cherche les routes à la racine du repo et ne trouve rien.
-
 ### 2. Variables d’environnement (Vercel)
 
 Dans le projet Vercel : **Settings → Environment Variables**, ajouter :
