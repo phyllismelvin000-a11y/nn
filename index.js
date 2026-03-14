@@ -17,6 +17,7 @@ const {
 const { buildWaveLink } = require('./payment');
 const { isAdmin, getAdminChatId } = require('./middleware/auth');
 const { pendingOrderImageOnly } = require('./middleware/pendingOrder');
+const { saveUser, getUserByUserId, getUsers, getUsersCount } = require('./users');
 const { schedulePaymentReminderAndCancel, runPaymentTimeoutRecovery } = require('./lib/paymentTimers');
 const msg = require('./lib/messages');
 
@@ -81,6 +82,19 @@ const mainMenuKeyboard = Markup.keyboard([['📱 Menu'], ['🛒 Catalogue']])
   .resize()
   .persistent();
 
+// Clavier pour demander le partage du numéro (nouveaux utilisateurs)
+const contactRequestKeyboard = Markup.keyboard([
+  [Markup.button.contactRequest('📱 Partager mon numéro')],
+]).resize().oneTime();
+
+async function isUserAllowed(ctx) {
+  if (isAdmin(ctx)) return true;
+  const userId = ctx.from?.id;
+  if (!userId) return false;
+  const user = await getUserByUserId(userId);
+  return user && user.countryAllowed === true;
+}
+
 function getMenuContent() {
   const text = [
     msg.client.menuTitle,
@@ -128,25 +142,59 @@ function getAdminMenuContent() {
     rows.push([Markup.button.url('🔗 Backoffice', backofficeUrl)]);
   }
   rows.push([Markup.button.callback('📦 Stock / comptes disponibles', 'admin_stock')]);
+  rows.push([Markup.button.callback('👥 Voir utilisateurs', 'admin_users')]);
   const keyboard = Markup.inlineKeyboard(rows);
   return { text, keyboard };
 }
 
-function showMenu(ctx) {
+async function showMenu(ctx) {
   if (isAdmin(ctx)) {
     const { text, keyboard } = getAdminMenuContent();
     return ctx.replyWithHTML(text, keyboard);
+  }
+  if (!(await isUserAllowed(ctx))) {
+    return ctx.reply(msg.client.sharePhone, contactRequestKeyboard);
   }
   const { text, keyboard } = getMenuContent();
   return ctx.replyWithHTML(text, keyboard);
 }
 
-bot.start((ctx) => {
+bot.start(async (ctx) => {
   if (isAdmin(ctx)) {
     const { text, keyboard } = getAdminMenuContent();
     return ctx.replyWithHTML(msg.client.welcomeAdmin + '\n\n' + text, keyboard);
   }
+  if (!(await isUserAllowed(ctx))) {
+    return ctx.reply(msg.client.sharePhone, contactRequestKeyboard);
+  }
   return ctx.reply(msg.client.welcome, mainMenuKeyboard);
+});
+
+// Partage du contact : vérification +225 puis enregistrement ou refus
+bot.on('contact', async (ctx) => {
+  const from = ctx.from;
+  const contact = ctx.message?.contact;
+  if (!contact?.phone_number || !from?.id) {
+    return ctx.reply(msg.errors.generic);
+  }
+  if (isAdmin(ctx)) {
+    return ctx.reply(msg.client.welcome, mainMenuKeyboard);
+  }
+  const raw = contact.phone_number.replace(/\D/g, '');
+  const isIvorian = raw.startsWith('225') && raw.length >= 9;
+  const firstName = from.first_name || '';
+  const username = from.username || '';
+  if (isIvorian) {
+    await saveUser({
+      userId: String(from.id),
+      phone_number: contact.phone_number,
+      firstName,
+      username,
+      countryAllowed: true,
+    });
+    return ctx.reply(msg.client.welcome, mainMenuKeyboard);
+  }
+  return ctx.reply(msg.client.countryNotAllowed);
 });
 
 // Tap sur le bouton "Menu" ou "Catalogue" du clavier = pas besoin de taper /menu ou /catalogue
@@ -185,15 +233,18 @@ bot.action('client_ma_commande', async (ctx) => {
 // ——— Actions du menu admin ———
 bot.action('admin_stats', async (ctx) => {
   await ctx.answerCbQuery();
-  const [enAttente, confirmees, livrees, annulees] = await Promise.all([
+  const [enAttente, confirmees, livrees, annulees, usersCount] = await Promise.all([
     getOrders({ limit: 500, status: STATUS.EN_ATTENTE }),
     getOrders({ limit: 500, status: STATUS.CONFIRMEE }),
     getOrders({ limit: 500, status: STATUS.LIVREE }),
     getOrders({ limit: 500, status: STATUS.ANNULEE }),
+    getUsersCount(),
   ]);
   const total = enAttente.length + confirmees.length + livrees.length + annulees.length;
   const text = [
     '📊 <b>Statistiques</b>',
+    '',
+    `👥 Utilisateurs : <b>${usersCount}</b>`,
     '',
     `📥 En attente (reçu) : <b>${enAttente.length}</b>`,
     `✅ Confirmées (à livrer) : <b>${confirmees.length}</b>`,
@@ -202,7 +253,42 @@ bot.action('admin_stats', async (ctx) => {
     '',
     `Total : <b>${total}</b> commandes`,
   ].join('\n');
-  await ctx.replyWithHTML(text);
+  const keyboard = Markup.inlineKeyboard([
+    [Markup.button.callback('👥 Voir utilisateurs', 'admin_users')],
+  ]);
+  await ctx.replyWithHTML(text, keyboard);
+});
+
+bot.action('admin_users', async (ctx) => {
+  await ctx.answerCbQuery();
+  const users = await getUsers({ limit: 200 });
+  if (!users.length) {
+    return ctx.replyWithHTML('👥 <b>Utilisateurs</b>\n\nAucun utilisateur enregistré.');
+  }
+  const lines = users.map((u) => {
+    const name = [u.firstName, u.username ? `@${u.username}` : ''].filter(Boolean).join(' ') || `ID ${u.userId}`;
+    const phone = u.phone_number || '—';
+    return `• ${name} — ${phone}`;
+  });
+  const header = `👥 <b>Utilisateurs</b> (${users.length})\n\n`;
+  const body = lines.join('\n');
+  const msgText = header + body;
+  if (msgText.length > 4000) {
+    const chunks = [];
+    let current = header;
+    for (const line of lines) {
+      if (current.length + line.length + 1 > 4000) {
+        chunks.push(current);
+        current = line;
+      } else {
+        current += '\n' + line;
+      }
+    }
+    if (current) chunks.push(current);
+    for (const chunk of chunks) await ctx.replyWithHTML(chunk);
+  } else {
+    await ctx.replyWithHTML(msgText);
+  }
 });
 
 bot.action('admin_commandes', async (ctx) => {
@@ -334,6 +420,9 @@ bot.action('menu_catalogue', async (ctx) => {
     onoff.forEach(p => { lines.push(`• ${p.titre || 'Onoff'} : <b>${p.stock ?? 0}</b> en stock`); });
     if (netflix.length === 0 && onoff.length === 0) lines.push(msg.admin.noProduct);
     return ctx.editMessageText(lines.join('\n'), { parse_mode: 'HTML' });
+  }
+  if (!(await isUserAllowed(ctx))) {
+    return ctx.reply(msg.client.sharePhone, contactRequestKeyboard);
   }
   return ctx.editMessageText(msg.catalogue.chooseCategory, {
     parse_mode: 'HTML',
@@ -586,6 +675,9 @@ async function sendCatalogue(ctx) {
     onoff.forEach(p => { lines.push(`• ${p.titre || 'Onoff'} : <b>${p.stock ?? 0}</b> en stock`); });
     if (netflix.length === 0 && onoff.length === 0) lines.push('Aucun produit actif.');
     return ctx.replyWithHTML(lines.join('\n'));
+  }
+  if (!(await isUserAllowed(ctx))) {
+    return ctx.reply(msg.client.sharePhone, contactRequestKeyboard);
   }
   console.log(`[${logHorodatage()}] Catalogue demandé → choix catégorie`);
   const netflixImg = process.env.NETFLIX_CAT_IMAGE_URL;

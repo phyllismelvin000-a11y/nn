@@ -24,6 +24,7 @@ const {
 } = require('./orders');
 const { getProductById: getProductForOrder } = require('./catalogue');
 const { incrementStock } = require('./catalogue');
+const { getUsers, getUsersCount } = require('./users');
 
 initFirebase();
 
@@ -119,6 +120,7 @@ app.get('/admin/dashboard', async (req, res) => {
   const confirmees = (await getOrders({ limit: 500, status: STATUS.CONFIRMEE })).length;
   const livrees = (await getOrders({ limit: 500, status: STATUS.LIVREE })).length;
   const annulees = (await getOrders({ limit: 500, status: STATUS.ANNULEE })).length;
+  const usersCount = await getUsersCount();
   res.render('dashboard', {
     orders: orders.slice(0, 10),
     productsCount: products.length,
@@ -126,7 +128,13 @@ app.get('/admin/dashboard', async (req, res) => {
     confirmees,
     livrees,
     annulees,
+    usersCount,
   });
+});
+
+app.get('/admin/users', async (req, res) => {
+  const users = await getUsers({ limit: 500 });
+  res.render('users', { users });
 });
 
 app.get('/admin/products', async (req, res) => {

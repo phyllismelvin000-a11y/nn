@@ -38,7 +38,9 @@
         <div class="card"><div class="value"><%= livrees %></div><div class="label">Livrées</div></div>
         <div class="card"><div class="value"><%= annulees %></div><div class="label">Annulées</div></div>
         <div class="card"><div class="value"><%= productsCount %></div><div class="label">Produits</div></div>
+        <div class="card"><div class="value"><%= typeof usersCount !== 'undefined' ? usersCount : 0 %></div><div class="label">Utilisateurs</div></div>
       </div>
+      <% if (typeof usersCount !== 'undefined') { %><p style="margin-bottom:1rem;"><a href="/admin/users" class="btn btn-ghost">👥 Voir les utilisateurs</a></p><% } %>
       <h2 style="font-size:1.1rem;margin-bottom:0.5rem;">Dernières commandes</h2>
       <table>
         <thead><tr><th>Réf.</th><th>Client</th><th>Produit</th><th>Statut</th><th>Date</th></tr></thead>
