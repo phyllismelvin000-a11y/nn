@@ -987,7 +987,7 @@ bot.on('text', async (ctx) => {
       }
       const product = await addProductFromSubProduct(state.categoryId, state.subProductId, payload);
       console.log(`[${logHorodatage()}] Produit ajouté : ${product.titre} — ${product.prix} FCFA, stock ${product.stock}`);
-      checkAndSendReplenishmentAlert(bot, product.id, product.titre).catch(e => console.error('Erreur alerte réassort:', e.message));
+      checkAndSendReplenishmentAlert(bot, product.id, product.titre, product.stock).catch(e => console.error('Erreur alerte réassort:', e.message));
       return ctx.reply(`Produit ajouté : ${product.titre} — ${product.prix} FCFA (stock ${product.stock}). E/P/date enregistrés.`);
     } catch (e) {
       console.error('Erreur ajout produit:', e.message);

@@ -199,7 +199,7 @@ app.post('/admin/products/quick', async (req, res) => {
   }
   const product = await addProductFromSubProduct(categoryId, subId, { E: (E || '').trim(), P: (P || '').trim(), dateExpiration: (dateExpiration || '').trim() });
   if (botInstance && product?.id) {
-    checkAndSendReplenishmentAlert(botInstance, product.id, product.titre).catch(e => console.error('Erreur alerte réassort:', e.message));
+    checkAndSendReplenishmentAlert(botInstance, product.id, product.titre, product.stock).catch(e => console.error('Erreur alerte réassort:', e.message));
   }
   res.redirect('/admin/products');
 });
