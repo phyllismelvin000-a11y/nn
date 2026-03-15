@@ -43,19 +43,22 @@
       </p>
       <% } %>
       <table>
-        <thead><tr><th>Réf.</th><th>Client</th><th>Produit / Montant</th><th>Statut</th><th>Date</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Réf.</th><th>Client</th><th>Produit / Montant</th><th>Statut</th><th>Compte livré</th><th>Date</th><th>Actions</th></tr></thead>
         <tbody>
           <% orders.forEach(function(o) {
             const qte = o.produit?.quantite ?? 1;
             const total = o.produit?.total ?? o.produit?.prix;
             const produitStr = qte > 1 ? `${o.produit?.titre} x${qte} = ${total} F` : `${o.produit?.titre} — ${total} F`;
             const created = o.createdAt?.toMillis ? new Date(o.createdAt.toMillis()).toLocaleString('fr-FR') : (o.createdAt || '-');
+            const d = o.deliveryData;
+            const compteStr = (o.status === 'livree' && d && (d.E || d.P || d.dateExpiration)) ? `E: ${d.E || '—'} | P: ${d.P || '—'} | Exp: ${d.dateExpiration || '—'}` : (o.status === 'livree' ? '—' : '');
           %>
           <tr>
             <td><%= o.refCommande || o.id %></td>
             <td>@<%= o.username || o.userId %></td>
             <td><%= produitStr %></td>
             <td><span class="badge badge-<%= o.status %>"><%= o.status %></span></td>
+            <td style="font-size:0.85rem;max-width:200px;word-break:break-all;"><%= compteStr %></td>
             <td><%= created %></td>
             <td>
               <% if (o.status === STATUS.CONFIRMEE || o.status === STATUS.EN_ATTENTE) { %>
@@ -71,7 +74,7 @@
             </td>
           </tr>
           <% }); %>
-          <% if (orders.length === 0) { %><tr><td colspan="6" style="color:var(--muted);">Aucune commande</td></tr><% } %>
+          <% if (orders.length === 0) { %><tr><td colspan="7" style="color:var(--muted);">Aucune commande</td></tr><% } %>
         </tbody>
       </table>
       <% if (typeof totalPages !== 'undefined' && totalPages > 1) { %>

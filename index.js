@@ -143,6 +143,7 @@ function getAdminMenuContent() {
       Markup.button.callback('🔄 En cours', 'admin_en_cours'),
     ],
     [Markup.button.callback('✅ Traitées (livrées)', 'admin_traitees')],
+    [Markup.button.callback('📋 Comptes livrés (qui a reçu quoi)', 'admin_livraisons')],
   ];
   if (backofficeUrl.startsWith('https://')) {
     rows.push([Markup.button.url('🔗 Backoffice', backofficeUrl)]);
@@ -419,6 +420,36 @@ bot.action('admin_traitees', async (ctx) => {
     return `• ${o.refCommande || o.id} | ${p} | @${o.username || o.userId}`;
   });
   await ctx.replyWithHTML('<b>✅ Commandes livrées</b>\n\n' + lines.join('\n'));
+});
+
+bot.action('admin_livraisons', async (ctx) => {
+  await ctx.answerCbQuery();
+  const livrees = await getOrders({ limit: 50, status: STATUS.LIVREE });
+  if (!livrees.length) {
+    return ctx.reply('Aucune livraison. Voir « Traitées (livrées) » pour la liste simple.');
+  }
+  const header = '📋 <b>Comptes livrés (qui a reçu quel compte)</b>\n\n';
+  const lines = livrees.map(o => {
+    const d = o.deliveryData || {};
+    const client = `@${o.username || o.userId}`;
+    const produit = o.produit?.titre || '-';
+    const e = d.E ? `E: ${d.E}` : '';
+    const p = d.P ? `P: ${d.P}` : '';
+    const exp = d.dateExpiration ? `Exp: ${d.dateExpiration}` : '';
+    const compte = [e, p, exp].filter(Boolean).join(' | ') || '—';
+    return `• ${o.refCommande || o.id} | ${client} | ${produit}\n  ${compte}`;
+  });
+  let text = header + lines.join('\n\n');
+  if (text.length > 4000) {
+    const chunks = [header];
+    for (const line of lines) {
+      if (chunks[chunks.length - 1].length + line.length + 2 > 4000) chunks.push(line);
+      else chunks[chunks.length - 1] += '\n\n' + line;
+    }
+    for (const chunk of chunks) await ctx.replyWithHTML(chunk);
+  } else {
+    await ctx.replyWithHTML(text);
+  }
 });
 
 bot.action('admin_stock', async (ctx) => {

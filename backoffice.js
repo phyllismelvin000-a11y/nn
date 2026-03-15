@@ -303,6 +303,11 @@ app.post('/admin/products/:id/edit', async (req, res) => {
 const ORDERS_PAGE_SIZE = 30;
 const ORDERS_FETCH_MAX = 300;
 
+app.get('/admin/deliveries', async (req, res) => {
+  const livrees = await getOrders({ limit: 200, status: STATUS.LIVREE });
+  res.render('deliveries', { deliveries: livrees, STATUS });
+});
+
 app.get('/admin/orders', async (req, res) => {
   const status = req.query.status || null;
   const page = Math.max(1, parseInt(req.query.page, 10) || 1);

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Livraisons — Backoffice MonAbo</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root { --bg:#0f0f12; --card:#18181c; --border:#2a2a2e; --text:#e4e4e7; --muted:#71717a; --accent:#22c55e; }
+    *{box-sizing:border-box;} body{margin:0;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.5;}
+    .app{display:flex;min-height:100vh;} .sidebar{width:220px;background:var(--card);border-right:1px solid var(--border);padding:1.25rem 0;}
+    .sidebar a{display:block;padding:0.6rem 1.25rem;color:var(--muted);text-decoration:none;font-size:0.9rem;} .sidebar a:hover{color:var(--text);background:rgba(255,255,255,0.04);}
+    .sidebar .brand{padding:0 1.25rem 1rem;font-weight:700;color:var(--text);font-size:1rem;}
+    .main{flex:1;padding:1.5rem 2rem;overflow:auto;}
+    h1{font-size:1.5rem;font-weight:600;margin:0 0 1rem;}
+    table{width:100%;border-collapse:collapse;font-size:0.9rem;} th,td{padding:0.6rem 0.75rem;text-align:left;border-bottom:1px solid var(--border);} th{color:var(--muted);font-weight:500;}
+    .btn-ghost{display:inline-block;padding:0.35rem 0.65rem;border-radius:6px;font-size:0.8rem;background:transparent;color:var(--text);border:1px solid var(--border);text-decoration:none;font-family:inherit;}
+    .compte-cell{font-size:0.85rem;word-break:break-all;max-width:280px;}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <%- include('partials/sidebar') %>
+    <main class="main">
+      <h1>Livraisons — Qui a reçu quel compte</h1>
+      <p style="color:var(--muted);margin-bottom:1rem;">Commandes livrées avec le compte (E, P, date d'expiration) envoyé au client.</p>
+      <table>
+        <thead><tr><th>Date</th><th>Réf.</th><th>Client</th><th>Produit</th><th>E</th><th>P</th><th>Date expiration</th></tr></thead>
+        <tbody>
+          <% deliveries.forEach(function(o) {
+            const d = o.deliveryData || {};
+            const created = o.createdAt?.toMillis ? new Date(o.createdAt.toMillis()).toLocaleString('fr-FR') : '-';
+            const produitStr = o.produit?.titre || '-';
+          %>
+          <tr>
+            <td><%= created %></td>
+            <td><%= o.refCommande || o.id %></td>
+            <td>@<%= o.username || o.userId %></td>
+            <td><%= produitStr %></td>
+            <td class="compte-cell"><%= d.E || '—' %></td>
+            <td class="compte-cell"><%= d.P || '—' %></td>
+            <td><%= d.dateExpiration || '—' %></td>
+          </tr>
+          <% }); %>
+          <% if (deliveries.length === 0) { %><tr><td colspan="7" style="color:var(--muted);">Aucune livraison.</td></tr><% } %>
+        </tbody>
+      </table>
+      <p style="margin-top:1rem;"><a href="/admin/orders?status=livree" class="btn-ghost">Voir dans Commandes</a></p>
+    </main>
+  </div>
+</body>
+</html>
