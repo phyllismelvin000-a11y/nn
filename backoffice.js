@@ -75,7 +75,15 @@ if (useFileStore) {
     const FileStore = require('session-file-store')(session);
     const sessionPath = process.env.SESSION_PATH || path.join(__dirname, 'data', 'sessions');
     fs.mkdirSync(sessionPath, { recursive: true });
-    sessionStore = new FileStore({ path: sessionPath, ttl: 24 * 60 * 60 });
+    sessionStore = new FileStore({
+      path: sessionPath,
+      ttl: 24 * 60 * 60,
+      logFn: (msg) => {
+        if (typeof msg === 'string' && msg.includes('will retry') && msg.includes('ENOENT')) return;
+        if (typeof msg === 'string' && msg.includes('Deleting expired sessions')) return;
+        if (msg) console.log(msg);
+      },
+    });
   } catch (e) {
     console.warn('Session file store non disponible, utilisation du store mémoire:', e.message);
   }
