@@ -93,10 +93,19 @@ const contactRequestKeyboard = Markup.keyboard([
   [Markup.button.contactRequest('📱 Partager mon numéro')],
 ]).resize().oneTime();
 
+// Utilisateurs autorisés sans numéro ivoirien (ex. 2e compte) — variable d'env ALLOWED_USER_IDS=123,456
+const ALLOWED_USER_IDS = new Set(
+  (process.env.ALLOWED_USER_IDS || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean)
+);
+
 async function isUserAllowed(ctx) {
   if (isAdmin(ctx)) return true;
   const userId = ctx.from?.id;
   if (!userId) return false;
+  if (ALLOWED_USER_IDS.has(String(userId))) return true;
   const user = await getUserByUserId(userId);
   return user && user.countryAllowed === true;
 }
@@ -178,7 +187,7 @@ bot.start(async (ctx) => {
   return ctx.reply(msg.client.welcome, mainMenuKeyboard);
 });
 
-// Partage du contact : vérification +225 puis enregistrement ou refus
+// Partage du contact : vérification +225 ou utilisateur dans ALLOWED_USER_IDS
 bot.on('contact', async (ctx) => {
   const from = ctx.from;
   const contact = ctx.message?.contact;
@@ -190,9 +199,10 @@ bot.on('contact', async (ctx) => {
   }
   const raw = contact.phone_number.replace(/\D/g, '');
   const isIvorian = raw.startsWith('225') && raw.length >= 9;
+  const isAllowedException = ALLOWED_USER_IDS.has(String(from.id));
   const firstName = from.first_name || '';
   const username = from.username || '';
-  if (isIvorian) {
+  if (isIvorian || isAllowedException) {
     await saveUser({
       userId: String(from.id),
       phone_number: contact.phone_number,

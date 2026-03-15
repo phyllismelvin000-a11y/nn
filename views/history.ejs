@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Historique d'achat — Backoffice MonAbo</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root { --bg:#0f0f12; --card:#18181c; --border:#2a2a2e; --text:#e4e4e7; --muted:#71717a; --accent:#22c55e; }
+    *{box-sizing:border-box;} body{margin:0;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.5;}
+    .app{display:flex;min-height:100vh;} .sidebar{width:220px;background:var(--card);border-right:1px solid var(--border);padding:1.25rem 0;}
+    .sidebar a{display:block;padding:0.6rem 1.25rem;color:var(--muted);text-decoration:none;font-size:0.9rem;} .sidebar a:hover{color:var(--text);background:rgba(255,255,255,0.04);}
+    .sidebar .brand{padding:0 1.25rem 1rem;font-weight:700;color:var(--text);font-size:1rem;}
+    .main{flex:1;padding:1.5rem 2rem;overflow:auto;}
+    h1{font-size:1.5rem;font-weight:600;margin:0 0 1rem;}
+    table{width:100%;border-collapse:collapse;font-size:0.9rem;} th,td{padding:0.6rem 0.75rem;text-align:left;border-bottom:1px solid var(--border);} th{color:var(--muted);font-weight:500;}
+    .badge{display:inline-block;padding:0.2rem 0.5rem;border-radius:4px;font-size:0.75rem;font-weight:500;}
+    .badge-en_attente{background:rgba(234,179,8,0.2);color:#eab308;} .badge-confirmee{background:rgba(34,197,94,0.2);color:#22c55e;}
+    .badge-livree{background:rgba(59,130,246,0.2);color:#3b82f6;} .badge-annulee{background:rgba(239,68,68,0.2);color:#ef4444;}
+    .filter-form{display:flex;gap:0.5rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap;}
+    .filter-form input{padding:0.4rem 0.6rem;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:0.9rem;}
+    .btn-ghost{display:inline-block;padding:0.35rem 0.65rem;border-radius:6px;font-size:0.8rem;background:transparent;color:var(--text);border:1px solid var(--border);text-decoration:none;cursor:pointer;font-family:inherit;}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <%- include('partials/sidebar') %>
+    <main class="main">
+      <h1>Historique d'achat — Qui a acheté quoi</h1>
+      <form method="get" action="/admin/history" class="filter-form">
+        <input type="text" name="client" value="<%= typeof clientFilter !== 'undefined' ? clientFilter : '' %>" placeholder="Filtrer par client (@pseudo ou ID)" />
+        <button type="submit" class="btn-ghost">Filtrer</button>
+        <% if (typeof clientFilter !== 'undefined' && clientFilter) { %>
+        <a href="/admin/history" class="btn-ghost">Tout afficher</a>
+        <% } %>
+      </form>
+      <% if (typeof totalCount !== 'undefined' && totalCount > 0) { %>
+      <p style="color:var(--muted);font-size:0.875rem;margin-bottom:0.5rem;">
+        <%= totalCount %> achat(s) — page <%= page %> / <%= totalPages %>
+      </p>
+      <% } %>
+      <table>
+        <thead><tr><th>Date</th><th>Client</th><th>Produit</th><th>Montant</th><th>Statut</th><th>Réf.</th></tr></thead>
+        <tbody>
+          <% orders.forEach(function(o) {
+            const qte = o.produit?.quantite ?? 1;
+            const total = o.produit?.total ?? o.produit?.prix;
+            const produitStr = o.produit?.titre ? (qte > 1 ? `${o.produit.titre} x${qte}` : o.produit.titre) : '-';
+            const created = o.createdAt?.toMillis ? new Date(o.createdAt.toMillis()).toLocaleString('fr-FR') : '-';
+          %>
+          <tr>
+            <td><%= created %></td>
+            <td>@<%= o.username || o.userId %></td>
+            <td><%= produitStr %></td>
+            <td><%= total != null ? total + ' F' : '—' %></td>
+            <td><span class="badge badge-<%= o.status %>"><%= o.status %></span></td>
+            <td><%= o.refCommande || o.id %></td>
+          </tr>
+          <% }); %>
+          <% if (orders.length === 0) { %><tr><td colspan="6" style="color:var(--muted);">Aucun achat.</td></tr><% } %>
+        </tbody>
+      </table>
+      <% if (typeof totalPages !== 'undefined' && totalPages > 1) { %>
+      <nav style="margin-top:1.5rem;display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+        <% const q = clientFilter ? '?client=' + encodeURIComponent(clientFilter) + '&' : '?'; %>
+        <% if (page > 1) { %>
+        <a href="/admin/history<%= q %>page=<%= page - 1 %>" class="btn-ghost">← Précédent</a>
+        <% } %>
+        <span style="color:var(--muted);font-size:0.9rem;">Page <%= page %> / <%= totalPages %></span>
+        <% if (page < totalPages) { %>
+        <a href="/admin/history<%= q %>page=<%= page + 1 %>" class="btn-ghost">Suivant →</a>
+        <% } %>
+      </nav>
+      <% } %>
+    </main>
+  </div>
+</body>
+</html>

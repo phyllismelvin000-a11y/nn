@@ -308,6 +308,32 @@ app.get('/admin/deliveries', async (req, res) => {
   res.render('deliveries', { deliveries: livrees, STATUS });
 });
 
+const HISTORY_PAGE_SIZE = 40;
+app.get('/admin/history', async (req, res) => {
+  const clientFilter = (req.query.client || '').trim().toLowerCase();
+  const allOrders = await getOrders({ limit: ORDERS_FETCH_MAX });
+  let orders = clientFilter
+    ? allOrders.filter(o => {
+        const u = String(o.username || '').toLowerCase();
+        const id = String(o.userId || '');
+        return u.includes(clientFilter) || id.includes(clientFilter);
+      })
+    : allOrders;
+  const totalCount = orders.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / HISTORY_PAGE_SIZE));
+  const page = Math.max(1, Math.min(parseInt(req.query.page, 10) || 1, totalPages));
+  const pageOrders = orders.slice((page - 1) * HISTORY_PAGE_SIZE, page * HISTORY_PAGE_SIZE);
+  res.render('history', {
+    orders: pageOrders,
+    STATUS,
+    page,
+    totalPages,
+    totalCount,
+    pageSize: HISTORY_PAGE_SIZE,
+    clientFilter,
+  });
+});
+
 app.get('/admin/orders', async (req, res) => {
   const status = req.query.status || null;
   const page = Math.max(1, parseInt(req.query.page, 10) || 1);
