@@ -84,7 +84,20 @@ npm run dev
 | `node scripts/seed-vpn.js` | Ajoute un produit VPN de démo (optionnel) |
 | `npm run delete-orders` | Script utilitaire suppression commandes |
 | `npm run reset-db` | Réinitialisation base (à utiliser avec précaution) |
+| `npm run start:whatsapp` | Lance le **bot WhatsApp** (même catalogue / commandes / Wave, connexion par QR) |
 | `npm test` | Lance les tests |
+
+---
+
+## Bot WhatsApp (optionnel)
+
+Un second point d’entrée permet d’utiliser **WhatsApp** avec la même logique que le bot Telegram (catalogue, commandes, paiement Wave, Firestore partagé).
+
+- **Lancement** : `npm run start:whatsapp`. Au premier démarrage, un **QR code** s’affiche dans le terminal : scanne-le avec WhatsApp (Paramètres → Appareils connectés).
+- **Utilisation** : les clients envoient *Menu*, *2* (catalogue), *Netflix* / *Onoff* / *VPN*, puis suivent les instructions (durée, quantité). Après paiement Wave, ils envoient l’ID de transaction (ex. T_xxx) au bot.
+- **Admin** : optionnel. Si tu définis `ADMIN_WHATSAPP_PHONE=225071234567` (ton numéro avec indicatif), en envoyant *Menu* ou *Stock* sur ce numéro tu vois le stock. Les notifications de commandes confirmées restent envoyées sur **Telegram** (admin) si `BOT_TOKEN` et `ADMIN_CHAT_ID` sont définis.
+- **Note** : le bot WhatsApp repose sur [whatsapp-web.js](https://wwebjs.dev/) (Puppeteer). En production (ex. serveur sans interface), prévoir un environnement avec Chrome/Chromium (buildpack ou image Docker adaptée).
+- **« Impossible de se connecter » / chargement infini puis erreur sur le téléphone** : 1) Sur le téléphone, utilise **Paramètres → Appareils connectés → Lier un appareil** et scanne le QR rapidement. 2) Si tu vois un chargement infini puis « Impossible de connecter l’appareil », arrête le bot (Ctrl+C), supprime les dossiers **`.wwebjs_auth`** et **`.wwebjs_cache`** à la racine du projet, puis relance `npm run start:whatsapp`. Le bot utilise une version figée de WhatsApp Web (2.2412.54) pour limiter ce problème. 3) Si ça persiste, vérifie que ton WhatsApp est à jour sur le téléphone.
 
 ---
 

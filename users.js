@@ -4,8 +4,8 @@ const { withRetry } = require('./util/retry');
 const COLLECTION = 'users';
 
 /**
- * Enregistre ou met à jour un utilisateur (après partage du contact).
- * @param {{ userId: string, phone_number: string, firstName?: string, username?: string, countryAllowed: boolean }} data
+ * Enregistre ou met à jour un utilisateur (après partage du contact ou premier message WhatsApp).
+ * @param {{ userId: string, phone_number: string, firstName?: string, username?: string, countryAllowed: boolean, welcomed?: boolean }} data
  */
 async function saveUser(data) {
   return withRetry(async () => {
@@ -21,8 +21,10 @@ async function saveUser(data) {
       countryAllowed: Boolean(data.countryAllowed),
       updatedAt: now,
     };
+    if (data.welcomed !== undefined) payload.welcomed = Boolean(data.welcomed);
     if (!doc.exists) {
       payload.createdAt = now;
+      if (payload.welcomed === undefined) payload.welcomed = false;
       await ref.set(payload);
     } else {
       await ref.update(payload);
@@ -31,10 +33,21 @@ async function saveUser(data) {
   });
 }
 
+/** Marque l'utilisateur comme ayant reçu le message de premier contact. */
+async function setUserWelcomed(userId) {
+  return withRetry(async () => {
+    const db = getDb();
+    await db.collection(COLLECTION).doc(String(userId)).update({
+      welcomed: true,
+      updatedAt: new Date(),
+    });
+  });
+}
+
 /**
- * Récupère un utilisateur par son ID Telegram.
+ * Récupère un utilisateur par son ID (Telegram ou WhatsApp wa_xxx).
  * @param {string} userId
- * @returns {Promise<{ userId, phone_number, firstName, username, countryAllowed } | null>}
+ * @returns {Promise<{ userId, phone_number, firstName, username, countryAllowed, welcomed } | null>}
  */
 async function getUserByUserId(userId) {
   const db = getDb();
@@ -47,6 +60,7 @@ async function getUserByUserId(userId) {
     firstName: d.firstName || '',
     username: d.username || '',
     countryAllowed: Boolean(d.countryAllowed),
+    welcomed: d.welcomed === true,
   };
 }
 
@@ -85,4 +99,4 @@ async function getUsersCount() {
   }
 }
 
-module.exports = { saveUser, getUserByUserId, getUsers, getUsersCount };
+module.exports = { saveUser, getUserByUserId, setUserWelcomed, getUsers, getUsersCount };

@@ -4,3 +4,5 @@ serviceAccountKey.json
 *.log
 .DS_Store
 data/
+.wwebjs_auth/
+.wwebjs_cache/

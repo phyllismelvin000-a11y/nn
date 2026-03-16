@@ -20,7 +20,7 @@ const {
 const { buildWaveLink } = require('./payment');
 const { isAdmin, getAdminChatId } = require('./middleware/auth');
 const { pendingOrderImageOnly } = require('./middleware/pendingOrder');
-const { saveUser, getUserByUserId, getUsers, getUsersCount } = require('./users');
+const { saveUser, getUserByUserId, setUserWelcomed, getUsers, getUsersCount } = require('./users');
 const { schedulePaymentReminderAndCancel, runPaymentTimeoutRecovery } = require('./lib/paymentTimers');
 const { checkAndSendReplenishmentAlert, getAllUserIdsToNotify } = require('./lib/stockAlert');
 const { verifyTransactionIdInWave, isConfigured: isWaveConfigured } = require('./lib/waveGraphql');
@@ -219,6 +219,11 @@ async function showMenu(ctx) {
   if (!(await isUserAllowed(ctx))) {
     return ctx.reply(msg.client.sharePhone, contactRequestKeyboard);
   }
+  const user = await getUserByUserId(ctx.from.id);
+  if (user && !user.welcomed) {
+    await ctx.reply(msg.client.firstWelcome, { parse_mode: 'HTML' });
+    await setUserWelcomed(ctx.from.id);
+  }
   const { text, keyboard } = getMenuContent();
   return ctx.replyWithHTML(text, keyboard);
 }
@@ -232,6 +237,11 @@ bot.start(async (ctx) => {
   }
   if (!(await isUserAllowed(ctx))) {
     return ctx.reply(msg.client.sharePhone, contactRequestKeyboard);
+  }
+  const user = await getUserByUserId(ctx.from.id);
+  if (user && !user.welcomed) {
+    await ctx.reply(msg.client.firstWelcome, { parse_mode: 'HTML' });
+    await setUserWelcomed(ctx.from.id);
   }
   return ctx.reply(msg.client.welcome, mainMenuKeyboard);
 });
@@ -259,6 +269,8 @@ bot.on('contact', async (ctx) => {
       username,
       countryAllowed: true,
     });
+    await ctx.reply(msg.client.firstWelcome, { parse_mode: 'HTML' });
+    await setUserWelcomed(String(from.id));
     return ctx.reply(msg.client.welcome, mainMenuKeyboard);
   }
   return ctx.reply(msg.client.countryNotAllowed);
@@ -1569,7 +1581,7 @@ async function start() {
     }
   }
   backoffice.setBot(bot);
-  await runPaymentTimeoutRecovery(bot);
+  await runPaymentTimeoutRecovery(bot, { userIdFilter: (id) => !String(id).startsWith('wa_') });
   console.log('');
   console.log('  Bot start');
   console.log('  Arrêt : Ctrl+C');

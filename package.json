@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
+    "start:whatsapp": "node whatsapp.js",
     "dev": "node index.js",
     "seed": "node seed-products.js",
     "seed-categories": "node seed-categories.js",
@@ -18,6 +19,8 @@
   },
   "dependencies": {
     "dotenv": "^16.4.5",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.25.0",
     "ejs": "^3.1.10",
     "express": "^4.21.0",
     "express-session": "^1.18.0",
