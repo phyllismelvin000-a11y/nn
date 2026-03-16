@@ -191,12 +191,28 @@ async function run() {
     authTimeoutMs: 90000,
   });
 
-  client.on('qr', (qr) => {
+  client.on('qr', async (qr) => {
     console.log('\n📱 Scannez ce QR code avec votre téléphone :');
     console.log('   WhatsApp → Paramètres → Appareils connectés → Lier un appareil\n');
     qrcode.generate(qr, { small: true });
     console.log('\n(QR valable ~20 s.)');
-    console.log('Si le téléphone affiche "Impossible de connecter l\'appareil" : arrêtez le bot, supprimez .wwebjs_auth et .wwebjs_cache, puis relancez.\n');
+    console.log(
+      'Si le téléphone affiche "Impossible de connecter l\'appareil" : arrêtez le bot, supprimez .wwebjs_auth et .wwebjs_cache, puis relancez.\n'
+    );
+    // Sauvegarder le QR dans Firestore pour le backoffice (/admin/whatsapp-qr)
+    try {
+      const db = getDb();
+      await db.collection('meta').doc('whatsapp_qr').set(
+        {
+          qr,
+          updatedAt: new Date(),
+        },
+        { merge: true }
+      );
+      console.log('QR WhatsApp enregistré pour le backoffice (/admin/whatsapp-qr).');
+    } catch (e) {
+      console.error('Erreur enregistrement QR WhatsApp dans Firestore:', e.message);
+    }
   });
 
   client.on('auth_failure', (msg) => {

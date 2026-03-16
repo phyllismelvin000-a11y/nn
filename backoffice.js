@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const express = require('express');
 const session = require('express-session');
-const { initFirebase } = require('./firebase');
+const { initFirebase, getDb } = require('./firebase');
 const {
   getAllProducts,
   getProductById,
@@ -154,6 +154,51 @@ app.get('/admin/dashboard', async (req, res) => {
     annulees,
     usersCount,
   });
+});
+
+app.get('/admin/whatsapp-qr', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const doc = await db.collection('meta').doc('whatsapp_qr').get();
+    if (!doc.exists) {
+      return res.send(
+        '<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>QR WhatsApp</title></head><body style="font-family:sans-serif;background:#050816;color:#e4e4e7;display:flex;align-items:center;justify-content:center;min-height:100vh;"><div style="text-align:center;"><h1 style="margin-bottom:1rem;">QR WhatsApp</h1><p>Aucun QR disponible pour le moment. Relancez le service WhatsApp ou attendez la génération d\'un nouveau QR.</p></div></body></html>'
+      );
+    }
+    const data = doc.data() || {};
+    const qr = encodeURIComponent(data.qr || '');
+    const updatedAt =
+      data.updatedAt && typeof data.updatedAt.toDate === 'function'
+        ? data.updatedAt.toDate().toLocaleString('fr-FR')
+        : '';
+    const html = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QR WhatsApp — Backoffice MonAbo</title>
+  <style>
+    body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#050816;color:#e4e4e7;display:flex;align-items:center;justify-content:center;min-height:100vh;}
+    .card{background:#0f172a;border-radius:12px;padding:1.5rem 1.75rem;box-shadow:0 20px 40px rgba(15,23,42,0.6);text-align:center;border:1px solid rgba(148,163,184,0.3);}
+    h1{margin:0 0 1rem;font-size:1.4rem;}
+    p{margin:0.25rem 0;color:#9ca3af;font-size:0.9rem;}
+    img{margin-top:1rem;border-radius:8px;border:1px solid rgba(148,163,184,0.4);}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Connexion WhatsApp</h1>
+    <p>Scanne le QR avec WhatsApp&nbsp;: <strong>Appareils connectés → Lier un appareil</strong>.</p>
+    ${updatedAt ? `<p style="font-size:0.8rem;">Généré le ${updatedAt}</p>` : ''}
+    <img src="https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${qr}" alt="QR WhatsApp" />
+  </div>
+</body>
+</html>`;
+    res.send(html);
+  } catch (e) {
+    console.error('Erreur récupération QR WhatsApp:', e.message);
+    res.status(500).send('Erreur lors de la récupération du QR WhatsApp.');
+  }
 });
 
 app.get('/admin/users', async (req, res) => {
