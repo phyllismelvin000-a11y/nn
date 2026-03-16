@@ -334,7 +334,18 @@ bot.action('annonce_confirm', async (ctx) => {
       failed++;
     }
   }
-  await ctx.reply(`✅ Annonce envoyée à <b>${sent}</b> utilisateur(s)${failed ? ` (${failed} échec(s))` : ''}.`, { parse_mode: 'HTML' });
+  try {
+    const db = getDb();
+    await db.collection('announcements').add({
+      text,
+      createdAt: new Date(),
+      sendToWhatsApp: true,
+      whatsappSent: false,
+    });
+  } catch (e) {
+    console.error('Erreur enregistrement annonce pour WhatsApp:', e.message);
+  }
+  await ctx.reply(`✅ Annonce envoyée à <b>${sent}</b> utilisateur(s) Telegram${failed ? ` (${failed} échec(s))` : ''}.\n📲 Une copie sera également diffusée aux clients WhatsApp.`, { parse_mode: 'HTML' });
 });
 
 bot.action('annonce_cancel', async (ctx) => {
@@ -1170,7 +1181,7 @@ bot.action(/^cancel_order_(.+)$/, async (ctx) => {
   await ctx.reply(msg.client.orderCancelledByYou(order.refCommande));
 });
 
-const WAVE_TRANSACTION_ID_REGEX = /^T_[A-Za-z0-9]+$/;
+const WAVE_TRANSACTION_ID_REGEX = /T_[A-Za-z0-9]+/;
 let lastWaveExpiryNotify = 0;
 const WAVE_EXPIRY_NOTIFY_COOLDOWN_MS = 60 * 60 * 1000; // 1 h
 async function notifyAdminWaveTokenExpired() {
@@ -1260,8 +1271,9 @@ async function confirmPendingOrderWithReceipt(ctx, order, { fileId = null, waveT
 
 // ID de transaction Wave (ex. T_5EPGALU...) : vérifier sur Wave Business puis confirmer la commande
 bot.on('text', async (ctx, next) => {
-  const text = ctx.message?.text?.trim();
-  if (!text || !WAVE_TRANSACTION_ID_REGEX.test(text)) return next();
+  const raw = ctx.message?.text?.trim();
+  const text = raw && raw.match(WAVE_TRANSACTION_ID_REGEX)?.[0];
+  if (!text) return next();
   if (isAdmin(ctx)) return next();
   const order = await getLastPendingOrderByUser(ctx.from.id);
   if (!order) return next();

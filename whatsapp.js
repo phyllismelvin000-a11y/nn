@@ -26,12 +26,12 @@ const {
 const { buildWaveLink } = require('./payment');
 const { schedulePaymentReminderAndCancel, runPaymentTimeoutRecovery } = require('./lib/paymentTimers');
 const { verifyTransactionIdInWave, isConfigured: isWaveConfigured } = require('./lib/waveGraphql');
-const { saveUser, getUserByUserId, setUserWelcomed } = require('./users');
+const { saveUser, getUserByUserId, setUserWelcomed, getUsers } = require('./users');
 const msg = require('./lib/messages');
 const mistral = require('./lib/mistral');
 
 const WAVE_ID_GUIDE_IMAGE_PATH = path.join(__dirname, 'assets', 'wave-id-transaction.png');
-const WAVE_TRANSACTION_ID_REGEX = /^T_[A-Za-z0-9]+$/;
+const WAVE_TRANSACTION_ID_REGEX = /T_[A-Za-z0-9]+/;
 
 const ADMIN_CHAT_ID = (process.env.ADMIN_CHAT_ID || '').trim();
 const BOT_TOKEN = (process.env.BOT_TOKEN || '').trim();
@@ -167,6 +167,50 @@ function isAdminByPhone(userId) {
   return ADMIN_WHATSAPP_PHONE && String(ADMIN_WHATSAPP_PHONE) === String(num);
 }
 
+async function broadcastWhatsAppAnnouncement(client, text) {
+  const users = await getUsers({ limit: 3000 });
+  const waUsers = users.filter((u) => String(u.userId).startsWith('wa_'));
+  if (!waUsers.length) return;
+  let sent = 0;
+  let failed = 0;
+  for (const u of waUsers) {
+    const jid = userIdToJid(u.userId);
+    if (!jid) continue;
+    await humanDelay();
+    try {
+      await client.sendMessage(jid, text);
+      sent++;
+    } catch (e) {
+      failed++;
+      console.error(`[${logHorodatage()}] Erreur envoi annonce WhatsApp à ${u.userId}:`, e.message);
+    }
+  }
+  console.log(
+    `[${logHorodatage()}] Annonce envoyée à ${sent} utilisateur(s) WhatsApp${failed ? `, ${failed} échec(s)` : ''}`
+  );
+}
+
+async function processPendingAnnouncements(client) {
+  const db = getDb();
+  const snap = await db
+    .collection('announcements')
+    .where('sendToWhatsApp', '==', true)
+    .where('whatsappSent', '==', false)
+    .limit(5)
+    .get();
+  if (snap.empty) return;
+  for (const doc of snap.docs) {
+    const data = doc.data() || {};
+    const text = String(data.text || '').trim();
+    if (!text) {
+      await doc.ref.update({ whatsappSent: true, whatsappSentAt: new Date(), whatsappSkipReason: 'empty_text' });
+      continue;
+    }
+    await broadcastWhatsAppAnnouncement(client, text);
+    await doc.ref.update({ whatsappSent: true, whatsappSentAt: new Date() });
+  }
+}
+
 async function run() {
   initFirebase();
   const client = new Client({
@@ -246,6 +290,11 @@ async function run() {
     runPaymentTimeoutRecovery(waAdapter, { userIdFilter: (id) => String(id).startsWith('wa_') }).then(() => {
       console.log('Timers de paiement (WhatsApp) chargés.');
     });
+    setInterval(() => {
+      processPendingAnnouncements(client).catch((e) =>
+        console.error('[WA] Erreur traitement annonces WhatsApp:', e.message)
+      );
+    }, 60 * 1000);
   });
 
   client.on('message', async (message) => {
@@ -318,8 +367,9 @@ async function run() {
       return;
     }
 
-    // ID de transaction Wave : confirmer la commande en attente
-    if (WAVE_TRANSACTION_ID_REGEX.test(body)) {
+    // ID de transaction Wave : confirmer la commande en attente (même si l'utilisateur écrit "ID de transaction T_...")
+    const txId = body.match(WAVE_TRANSACTION_ID_REGEX)?.[0] || null;
+    if (txId) {
       const order = await getLastPendingOrderByUser(userId);
       if (!order) {
         await replyHuman(message,msg.client.noPendingOrder);
@@ -328,18 +378,18 @@ async function run() {
       const ref = order.refCommande || order.id;
       const waveConfigured = isWaveConfigured();
       if (waveConfigured) {
-        const verification = await verifyTransactionIdInWave(body, order);
+        const verification = await verifyTransactionIdInWave(txId, order);
         if (!verification.valid) {
           await replyHuman(message,'❌ ' + verification.message);
           return;
         }
-        const { alreadyUsed } = await findOrderByWaveTransactionId(body, order.id);
+        const { alreadyUsed } = await findOrderByWaveTransactionId(txId, order.id);
         if (alreadyUsed) {
           await replyHuman(message,"❌ Cette transaction a déjà été utilisée pour une autre commande.");
           return;
         }
       }
-      await confirmOrderWhatsApp(client, message, order, userId, contactName, { waveTransactionId: body });
+      await confirmOrderWhatsApp(client, message, order, userId, contactName, { waveTransactionId: txId });
       return;
     }
 

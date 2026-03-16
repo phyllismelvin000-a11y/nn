@@ -13,8 +13,8 @@ function hasWaveIdGuideImage() {
   }
 }
 
-/** Format attendu : T_ suivi de lettres/chiffres (ex. T_5EPGALU ou T_HB7QSB7MGCZ4CFSE) */
-const WAVE_TRANSACTION_ID_REGEX = /^T_[A-Za-z0-9]+$/;
+/** ID Wave attendu : T_ suivi de lettres/chiffres (ex. T_5EPGALU ou T_HB7QSB7MGCZ4CFSE) */
+const WAVE_TRANSACTION_ID_REGEX = /T_[A-Za-z0-9]+/;
 
 /** Messages de navigation : pas besoin de vérifier la commande en attente (réponse plus rapide). */
 const NAVIGATION_TEXTS = new Set(['📱 menu', 'menu', '🛒 catalogue', 'catalogue', '/start', '/menu', '/catalogue']);
