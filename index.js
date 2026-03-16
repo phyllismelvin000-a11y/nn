@@ -210,6 +210,7 @@ function getAdminMenuContent() {
 }
 
 async function showMenu(ctx) {
+  ctx.sendChatAction('typing').catch(() => {});
   if (isAdmin(ctx)) {
     const { text, keyboard } = getAdminMenuContent();
     await ctx.replyWithHTML(text, keyboard);
@@ -1010,6 +1011,7 @@ bot.action('menu_fermer', async (ctx) => {
 });
 
 async function sendCatalogue(ctx) {
+  ctx.sendChatAction('typing').catch(() => {});
   if (isAdmin(ctx)) {
     const netflix = await getActiveProductsByCategory('netflix');
     const onoff = await getActiveProductsByCategory('onoff');

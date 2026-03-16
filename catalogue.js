@@ -5,17 +5,34 @@ const { getAvailableCount, addCompte, reserveOneForOrder } = require('./comptes'
 
 const COLLECTION = 'produits';
 
+/** Cache court pour alléger Firestore sur Menu / Catalogue (TTL 25 s). */
+const CACHE_TTL_MS = 25000;
+let activeProductsCache = null;
+let activeProductsCacheExpiry = 0;
+
 async function getActiveProducts() {
-  return withRetry(async () => {
+  const now = Date.now();
+  if (activeProductsCache != null && now < activeProductsCacheExpiry) {
+    return activeProductsCache;
+  }
+  const list = await withRetry(async () => {
     const db = getDb();
     const snap = await db.collection(COLLECTION)
       .where('actif', '==', true)
       .get();
-    let list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    list.sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0));
-    list = await enrichStockFromComptes(list);
-    return list;
+    let out = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    out.sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0));
+    out = await enrichStockFromComptes(out);
+    return out;
   });
+  activeProductsCache = list;
+  activeProductsCacheExpiry = now + CACHE_TTL_MS;
+  return list;
+}
+
+function invalidateActiveProductsCache() {
+  activeProductsCache = null;
+  activeProductsCacheExpiry = 0;
 }
 
 async function enrichStockFromComptes(products) {
@@ -71,6 +88,7 @@ async function updateProduct(id, data) {
     }
     if (Object.keys(updates).length === 0) return doc.data();
     await ref.update(updates);
+    invalidateActiveProductsCache();
     return getProductById(id);
   });
 }
@@ -126,6 +144,7 @@ async function addProduct({ titre, prix, description = '', imageUrl = '', stock 
     };
     if (categoryId) data.categoryId = String(categoryId).trim();
     const ref = await db.collection(COLLECTION).add(data);
+    invalidateActiveProductsCache();
     return { id: ref.id, ...data };
   });
 }
@@ -138,6 +157,7 @@ async function addProductFromCategory(categoryId, { E = '', P = '', dateExpirati
   if (!product) product = await createProductForCatalogue(categoryId);
   if (!product) throw new Error('Aucun produit pour ce catalogue. Créez d\'abord le catalogue.');
   const compte = await addCompte(product.id, { E, P, dateExpiration });
+  invalidateActiveProductsCache();
   return { id: product.id, titre: product.titre, prix: product.prix, stock: (product.stock || 0) + 1, compteId: compte.id };
 }
 
@@ -148,6 +168,7 @@ async function addProductFromSubProduct(catalogueId, subProductId, { E = '', P =
   const product = await getProductByCatalogueAndSub(catalogueId, subProductId);
   if (!product) throw new Error('Produit (catalogue + sous-produit) introuvable.');
   const compte = await addCompte(product.id, { E, P, dateExpiration });
+  invalidateActiveProductsCache();
   return { id: product.id, titre: product.titre, prix: product.prix, stock: product.stock + 1, compteId: compte.id };
 }
 
@@ -173,6 +194,7 @@ async function createProductForCatalogue(categoryId) {
       createdAt: new Date(),
     };
     const ref = await db.collection(COLLECTION).add(data);
+    invalidateActiveProductsCache();
     return { id: ref.id, ...data, stock: 0 };
   });
 }
@@ -200,6 +222,7 @@ async function createProductForSubProduct(catalogueId, subProductId) {
       createdAt: new Date(),
     };
     const ref = await db.collection(COLLECTION).add(data);
+    invalidateActiveProductsCache();
     return { id: ref.id, ...data, stock: 0 };
   });
 }
@@ -223,6 +246,7 @@ async function decrementStock(productId, quantity) {
     const current = doc.data().stock ?? 0;
     const newStock = Math.max(0, current - quantity);
     await ref.update({ stock: newStock });
+    invalidateActiveProductsCache();
     return true;
   });
 }
@@ -237,6 +261,7 @@ async function incrementStock(productId, quantity) {
     if (data.catalogueId != null) return true;
     const current = data.stock ?? 0;
     await ref.update({ stock: current + quantity });
+    invalidateActiveProductsCache();
     return true;
   });
 }
