@@ -154,7 +154,12 @@ Le bot fonctionne en **webhook** : Telegram envoie les mises à jour à ton URL.
 Le bot tourne en continu et utilise le **long polling** (comme en local).
 
 - Commande de démarrage : `node index.js` ou `npm start`
-- Même variables que dans `.env` ; pour Firebase, fournir `serviceAccountKey.json` ou la variable **FIREBASE_SERVICE_ACCOUNT** (JSON).
+- Même variables que dans `.env`. **Sur Railway / Render** (pas de fichier sur le serveur) : tu **dois** définir la variable **`FIREBASE_SERVICE_ACCOUNT`** avec le **contenu complet** de ton fichier `serviceAccountKey.json` :
+  1. Ouvre `serviceAccountKey.json` en local.
+  2. Copie tout le JSON (Ctrl+A, Ctrl+C).
+  3. Minifie en une seule ligne si besoin (supprimer retours à la ligne) — certains hébergeurs n’acceptent que une ligne.
+  4. Dans Railway (ou Render) : **Variables** → **New Variable** → Nom : `FIREBASE_SERVICE_ACCOUNT`, Valeur : colle le JSON.
+  5. Redéploie. Sans cette variable, le bot affiche « ni FIREBASE_SERVICE_ACCOUNT (env), ni serviceAccountKey.json » et ne démarre pas.
 - **Token Wave Business** : `WAVE_BUSINESS_TOKEN` est un token de **session** (obtenu via `wave-login.js`), pas une clé API permanente. Il peut expirer après un certain temps. En cas d’expiration :
   1. Sur ton PC : lancer `node scripts/wave-login.js` (SMS requis), récupérer le nouveau `WAVE_BUSINESS_TOKEN`.
   2. Mettre à jour la variable d’environnement sur le serveur (ex. Railway → Variables → `WAVE_BUSINESS_TOKEN`).
