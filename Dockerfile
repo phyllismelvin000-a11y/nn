@@ -1,18 +1,26 @@
 FROM ghcr.io/puppeteer/puppeteer:22.8.0
 
-# Répertoire de travail dans le conteneur
+# L'image Puppeteer utilise l'utilisateur non-root \"pptruser\"
+USER root
+
 WORKDIR /app
 
-# Éviter de retélécharger Chrome (l'image Puppeteer en a déjà un)
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 ENV NODE_ENV=production
 
-# Copier les fichiers de dépendances et installer
+# Copier les fichiers de dépendances et corriger les permissions
 COPY package*.json ./
+RUN chown -R pptruser:pptruser /app
+
+USER pptruser
 RUN npm install --omit=dev
 
-# Copier le reste du code
+USER root
+# Copier le reste du code et corriger les permissions
 COPY . .
+RUN chown -R pptruser:pptruser /app
+
+USER pptruser
 
 # Par défaut : lancer l'API / bot Telegram + backoffice
 # (Sur Railway, pour le service WhatsApp, on surchargera simplement la commande de démarrage en \"node whatsapp.js\")
