@@ -28,6 +28,13 @@ async function seed() {
   } else {
     console.log('Catégorie onoff déjà présente');
   }
+  let catVpn = byNom.vpn;
+  if (!catVpn) {
+    catVpn = await addCategory({ nom: 'vpn', description: 'VPN — produits illimités, identifiants envoyés après paiement' });
+    console.log('Catégorie créée : vpn');
+  } else {
+    console.log('Catégorie vpn déjà présente');
+  }
 
   const subsNetflix = await getSubProducts(catNetflix.id);
   if (subsNetflix.length === 0) {
@@ -40,6 +47,12 @@ async function seed() {
     const sub = await addSubProduct(catOnoff.id, { nom: 'Onoff Premium', prixMois: 3000 });
     await createProductForSubProduct(catOnoff.id, sub.id);
     console.log('  Sous-produit créé : Onoff Premium — 3000 FCFA/mois');
+  }
+  const subsVpn = await getSubProducts(catVpn.id);
+  if (subsVpn.length === 0) {
+    const sub = await addSubProduct(catVpn.id, { nom: 'VPN Premium', prixMois: 5000, description: 'Accès VPN — identifiants envoyés après paiement' });
+    await createProductForSubProduct(catVpn.id, sub.id);
+    console.log('  Sous-produit créé : VPN Premium — 5000 FCFA (illimité)');
   }
   process.exit(0);
 }

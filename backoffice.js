@@ -27,6 +27,7 @@ const { getProductById: getProductForOrder } = require('./catalogue');
 const { incrementStock } = require('./catalogue');
 const { getUsers, getUsersCount } = require('./users');
 const { checkAndSendReplenishmentAlert } = require('./lib/stockAlert');
+const { verifyOrderAgainstWave, isConfigured: isWaveConfigured } = require('./lib/waveGraphql');
 
 initFirebase();
 
@@ -357,6 +358,14 @@ app.get('/admin/orders', async (req, res) => {
     totalCount,
     pageSize: ORDERS_PAGE_SIZE,
   });
+});
+
+app.get('/admin/orders/:id/verify-wave', async (req, res) => {
+  const { id } = req.params;
+  const order = await getOrderById(id);
+  if (!order) return res.status(404).json({ error: 'Commande introuvable' });
+  const result = await verifyOrderAgainstWave(order);
+  return res.json(result);
 });
 
 app.post('/admin/orders/:id/status', async (req, res) => {

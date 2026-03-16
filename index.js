@@ -1,13 +1,16 @@
 require('dotenv').config();
+const path = require('path');
+const fs = require('fs');
 const { Telegraf, Markup } = require('telegraf');
 const { initFirebase, getDb } = require('./firebase');
 const { getActiveProducts, getActiveProductsByCategory, getProductById, addProduct, addProductFromCategory, addProductFromSubProduct, reserveCompteForOrder, decrementStock, incrementStock } = require('./catalogue');
 const { getCategories, getSubProducts } = require('./categories');
-const { updateOrderDeliveryData } = require('./orders');
+const { updateOrderDeliveryData, updateOrderWaveTransactionId, findOrderByWaveTransactionId } = require('./orders');
 const {
   createOrder,
   getLastPendingOrderByUser,
   getLastOrderByUser,
+  getOrdersByUser,
   getOrderById,
   updateOrderStatus,
   getLast10Orders,
@@ -20,7 +23,25 @@ const { pendingOrderImageOnly } = require('./middleware/pendingOrder');
 const { saveUser, getUserByUserId, getUsers, getUsersCount } = require('./users');
 const { schedulePaymentReminderAndCancel, runPaymentTimeoutRecovery } = require('./lib/paymentTimers');
 const { checkAndSendReplenishmentAlert, getAllUserIdsToNotify } = require('./lib/stockAlert');
+const { verifyTransactionIdInWave, isConfigured: isWaveConfigured } = require('./lib/waveGraphql');
 const msg = require('./lib/messages');
+
+/** Image pour montrer où trouver l'ID de transaction dans l'app Wave (flèche orange) */
+const WAVE_ID_GUIDE_IMAGE_PATH = path.join(__dirname, 'assets', 'wave-id-transaction.png');
+function hasWaveIdGuideImage() {
+  try {
+    return fs.existsSync(WAVE_ID_GUIDE_IMAGE_PATH);
+  } catch {
+    return false;
+  }
+}
+function sendPhotoOrText(ctx, text, extra = {}) {
+  const opts = { parse_mode: 'HTML', ...extra };
+  if (hasWaveIdGuideImage()) {
+    return ctx.replyWithPhoto({ source: fs.createReadStream(WAVE_ID_GUIDE_IMAGE_PATH) }, { ...opts, caption: text });
+  }
+  return ctx.reply(text, opts);
+}
 
 const announcementState = { step: null, text: null };
 
@@ -34,6 +55,21 @@ if (!BOT_TOKEN) {
 
 initFirebase();
 const bot = new Telegraf(BOT_TOKEN);
+
+// Mode maintenance : seuls l'admin et les utilisateurs dans ALLOWED_USER_IDS peuvent utiliser le bot
+const MAINTENANCE_MODE = /^(true|1|yes)$/i.test((process.env.MAINTENANCE_MODE || '').trim());
+bot.use((ctx, next) => {
+  if (!MAINTENANCE_MODE) return next();
+  const userId = ctx.from?.id;
+  if (userId == null) return next();
+  if (isAdmin(ctx)) return next();
+  if (ALLOWED_USER_IDS.has(String(userId))) return next();
+  const maintenanceMsg = msg.client.maintenance;
+  if (ctx.callbackQuery) {
+    ctx.answerCbQuery(maintenanceMsg).catch(() => {});
+  }
+  return ctx.reply(maintenanceMsg).then(() => {}).catch(() => {});
+});
 
 // Historique : tout ce qui arrive au bot s'affiche dans le terminal
 function logHorodatage() {
@@ -124,6 +160,7 @@ function getMenuContent() {
   const keyboard = Markup.inlineKeyboard([
     [Markup.button.callback('📂 Voir le catalogue', 'menu_catalogue')],
     [Markup.button.callback('📋 Où en est ma commande ?', 'client_ma_commande')],
+    [Markup.button.callback('📜 Historique des paiements', 'client_historique')],
     [
       Markup.button.callback('🛒 Catalogue', 'menu_catalogue'),
       Markup.button.callback('ℹ️ Aide', 'menu_aide'),
@@ -167,7 +204,8 @@ function getAdminMenuContent() {
 async function showMenu(ctx) {
   if (isAdmin(ctx)) {
     const { text, keyboard } = getAdminMenuContent();
-    return ctx.replyWithHTML(text, keyboard);
+    await ctx.replyWithHTML(text, keyboard);
+    return ctx.reply('📱 Accès rapide :', mainMenuKeyboard);
   }
   if (!(await isUserAllowed(ctx))) {
     return ctx.reply(msg.client.sharePhone, contactRequestKeyboard);
@@ -179,7 +217,9 @@ async function showMenu(ctx) {
 bot.start(async (ctx) => {
   if (isAdmin(ctx)) {
     const { text, keyboard } = getAdminMenuContent();
-    return ctx.replyWithHTML(msg.client.welcomeAdmin + '\n\n' + text, keyboard);
+    await ctx.replyWithHTML(msg.client.welcomeAdmin + '\n\n' + text, keyboard);
+    await ctx.reply('📱 Accès rapide :', mainMenuKeyboard);
+    return;
   }
   if (!(await isUserAllowed(ctx))) {
     return ctx.reply(msg.client.sharePhone, contactRequestKeyboard);
@@ -279,9 +319,14 @@ bot.action('annonce_confirm', async (ctx) => {
 bot.action('annonce_cancel', async (ctx) => {
   await ctx.answerCbQuery();
   if (!isAdmin(ctx)) return;
+  const wasPending = announcementState.step != null;
   announcementState.step = null;
   announcementState.text = null;
-  return ctx.reply('Annonce annulée.');
+  if (!wasPending) return;
+  await ctx.reply('Annonce annulée.');
+  const { text, keyboard } = getAdminMenuContent();
+  await ctx.replyWithHTML(text, keyboard);
+  await ctx.reply('📱 Accès rapide :', mainMenuKeyboard);
 });
 
 // Tap sur le bouton "Menu" ou "Catalogue" du clavier = pas besoin de taper /menu ou /catalogue
@@ -315,6 +360,40 @@ bot.action('client_ma_commande', async (ctx) => {
   const order = await getLastOrderByUser(userId);
   if (!order) return ctx.reply(msg.client.myOrderNone);
   return replyMyOrderStatus(ctx, order);
+});
+
+bot.action('client_historique', async (ctx) => {
+  await ctx.answerCbQuery();
+  if (isAdmin(ctx)) return ctx.reply(msg.client.adminNoOrderHereShort);
+  const userId = ctx.from?.id;
+  if (!userId) return ctx.reply(msg.errors.generic);
+  const orders = await getOrdersByUser(userId, { limit: 20 });
+  if (!orders.length) return ctx.replyWithHTML(msg.client.paymentHistoryNone);
+  const statusLabels = msg.client.myOrderStatus;
+  const lines = orders.map(o => {
+    const ref = o.refCommande || o.id.slice(0, 8);
+    const created = o.createdAt;
+    const dateStr = created && typeof created.toMillis === 'function'
+      ? new Date(created.toMillis()).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+      : (created ? new Date(created).toLocaleDateString('fr-FR') : '—');
+    const p = o.produit || {};
+    const titre = p.titre || 'Commande';
+    const qte = p.quantite ?? 1;
+    const duree = p.dureeMois != null ? ` ${p.dureeMois} mois` : '';
+    const productLabel = qte > 1 ? `${titre} x${qte}${duree}` : `${titre}${duree}`;
+    const total = p.total ?? p.prix ?? 0;
+    const statusLabel = statusLabels[o.status] || o.status;
+    return msg.client.paymentHistoryLine(ref, dateStr, productLabel, total, statusLabel);
+  });
+  const header = `${msg.client.paymentHistoryTitle}\n\n`;
+  const body = lines.join('\n');
+  const text = header + body;
+  const keyboard = Markup.inlineKeyboard([[Markup.button.callback('◀️ Retour au menu', 'menu_back')]]);
+  if (text.length > 4000) {
+    const chunk = header + lines.slice(0, 15).join('\n') + '\n\n… (20 dernières commandes max)';
+    return ctx.replyWithHTML(chunk, keyboard);
+  }
+  return ctx.replyWithHTML(text, keyboard);
 });
 
 // ——— Actions du menu admin ———
@@ -482,6 +561,7 @@ const CATEGORIES = [
 function getCategoryChoiceKeyboard() {
   return Markup.inlineKeyboard([
     [Markup.button.callback('Netflix', 'cat_netflix'), Markup.button.callback('Onoff', 'cat_onoff')],
+    [Markup.button.callback('🔒 VPN', 'cat_vpn')],
     [Markup.button.callback('◀️ Retour au menu', 'menu_back')],
   ]);
 }
@@ -525,27 +605,27 @@ async function sendOrderWithWave(ctx, product, quantity, dureeMois = null) {
   schedulePaymentReminderAndCancel(bot, order);
   const link = buildWaveLink(total, order.refCommande);
   console.log(`[${logHorodatage()}] Commande créée ref=${order.refCommande} par ${username} (${product.titre} ${dureeMois != null ? dureeMois + ' mois x' + quantity : quantity} = ${total} FCFA)`);
-  await ctx.reply(
-    msg.catalogue.orderCreated(order.refCommande, detail) + `\n${link}`,
-    {
-      parse_mode: 'HTML',
-      ...Markup.inlineKeyboard([
-        [Markup.button.url('Payer via Wave', link)],
-        [Markup.button.callback('❌ Annuler la commande', `cancel_order_${order.id}`)],
-      ]),
-    }
-  );
+  const orderText = msg.catalogue.orderCreated(order.refCommande, detail) + `\n${link}`;
+  const keyboard = Markup.inlineKeyboard([
+    [Markup.button.url('Payer via Wave', link)],
+    [Markup.button.callback('❌ Annuler la commande', `cancel_order_${order.id}`)],
+  ]);
+  await sendPhotoOrText(ctx, orderText + '\n\n📍 <i>Voir l\'image ci-dessous pour savoir où trouver l\'ID de transaction dans l\'app Wave.</i>', keyboard);
 }
 
 bot.action('menu_catalogue', async (ctx) => {
   await ctx.answerCbQuery();
   if (isAdmin(ctx)) {
-    const netflix = await getActiveProductsByCategory('netflix');
-    const onoff = await getActiveProductsByCategory('onoff');
+    const [netflix, onoff, vpn] = await Promise.all([
+      getActiveProductsByCategory('netflix'),
+      getActiveProductsByCategory('onoff'),
+      getActiveProductsByCategory('vpn'),
+    ]);
     const lines = [msg.admin.stockTitle, ''];
     netflix.forEach(p => { lines.push(`• ${p.titre || 'Netflix'} : <b>${p.stock ?? 0}</b> en stock`); });
     onoff.forEach(p => { lines.push(`• ${p.titre || 'Onoff'} : <b>${p.stock ?? 0}</b> en stock`); });
-    if (netflix.length === 0 && onoff.length === 0) lines.push(msg.admin.noProduct);
+    vpn.forEach(p => { lines.push(`• 🔒 ${p.titre || 'VPN'} : illimité`); });
+    if (netflix.length === 0 && onoff.length === 0 && vpn.length === 0) lines.push(msg.admin.noProduct);
     return ctx.editMessageText(lines.join('\n'), { parse_mode: 'HTML' });
   }
   if (!(await isUserAllowed(ctx))) {
@@ -558,11 +638,14 @@ bot.action('menu_catalogue', async (ctx) => {
 });
 
 // Netflix : image en haut, puis contenu (catégorie + instruction) + boutons en bas (comme référence XBOX)
-const CAPTION_NETFLIX = `📄 Catégorie: Netflix
+function getNetflixCaption(stock) {
+  const n = Math.max(0, stock ?? 0);
+  return `📄 Catégorie: Netflix — 📦 ${n} en stock
 
 - - - - - - - - - -
 
 ➡ Cliquez sur le bouton ci-dessous pour choisir la durée de votre abonnement (nombre de mois).`;
+}
 
 bot.action('cat_netflix', async (ctx) => {
   await ctx.answerCbQuery();
@@ -571,6 +654,7 @@ bot.action('cat_netflix', async (ctx) => {
   if (!product) {
     return ctx.editMessageText(msg.catalogue.noNetflix, getCategoryChoiceKeyboard());
   }
+  const stock = Math.max(0, product.stock ?? 0);
   const netflixImg = process.env.NETFLIX_CAT_IMAGE_URL;
   const keyboard = Markup.inlineKeyboard([
     NETFLIX_MOIS.map(m => Markup.button.callback(`${m} mois`, `netflix_${m}`)),
@@ -579,10 +663,11 @@ bot.action('cat_netflix', async (ctx) => {
   try {
     await ctx.deleteMessage();
   } catch (_) {}
+  const caption = getNetflixCaption(stock);
   if (netflixImg && netflixImg.startsWith('http')) {
-    await ctx.replyWithPhoto(netflixImg, { caption: CAPTION_NETFLIX, ...keyboard });
+    await ctx.replyWithPhoto(netflixImg, { caption, ...keyboard });
   } else {
-    await ctx.reply(CAPTION_NETFLIX, keyboard);
+    await ctx.reply(caption, keyboard);
   }
 });
 
@@ -610,11 +695,15 @@ function getOnoffTypeKeyboard() {
 }
 
 // Onoff : image en haut, puis contenu (catégorie + instruction) + boutons en bas (comme référence XBOX)
-const CAPTION_ONOFF = `📄 Catégorie: Onoff
+function getOnoffCaption(premiumStock, startStock) {
+  const p = Math.max(0, premiumStock ?? 0);
+  const s = Math.max(0, startStock ?? 0);
+  return `📄 Catégorie: Onoff — 📦 Premium : ${p} | Start : ${s} en stock
 
 - - - - - - - - - -
 
 ➡ Cliquez sur le bouton ci-dessous pour choisir le type d'abonnement (Premium ou Start).`;
+}
 
 bot.action('cat_onoff', async (ctx) => {
   await ctx.answerCbQuery();
@@ -622,15 +711,20 @@ bot.action('cat_onoff', async (ctx) => {
   if (!products.length) {
     return ctx.editMessageText(msg.catalogue.noOnoff, getCategoryChoiceKeyboard());
   }
+  const onoffPremium = products.find(p => (p.titre || '').toLowerCase().includes('premium'));
+  const onoffStart = products.find(p => (p.titre || '').toLowerCase().includes('start'));
+  const premiumStock = onoffPremium ? (onoffPremium.stock ?? 0) : 0;
+  const startStock = onoffStart ? (onoffStart.stock ?? 0) : 0;
   const onoffImg = process.env.ONOFF_CAT_IMAGE_URL;
   const keyboard = getOnoffTypeKeyboard();
   try {
     await ctx.deleteMessage();
   } catch (_) {}
+  const caption = getOnoffCaption(premiumStock, startStock);
   if (onoffImg && onoffImg.startsWith('http')) {
-    await ctx.replyWithPhoto(onoffImg, { caption: CAPTION_ONOFF, ...keyboard });
+    await ctx.replyWithPhoto(onoffImg, { caption, ...keyboard });
   } else {
-    await ctx.reply(CAPTION_ONOFF, keyboard);
+    await ctx.reply(caption, keyboard);
   }
 });
 
@@ -652,7 +746,10 @@ function editCaptionOrText(ctx, text, keyboard) {
 
 bot.action('onoff_premium', async (ctx) => {
   await ctx.answerCbQuery();
-  const text = 'Choisissez la durée (Onoff Premium — 3000 FCFA/mois) :';
+  const products = await getActiveProductsByCategory('onoff');
+  const product = products.find(p => (p.titre || '').toLowerCase().includes('premium'));
+  const stock = Math.max(0, product?.stock ?? 0);
+  const text = `Choisissez la durée (Onoff Premium — 3000 FCFA/mois) — 📦 ${stock} en stock :`;
   const keyboard = Markup.inlineKeyboard([
     ONOFF_MOIS.map(m => Markup.button.callback(`${m} mois`, `onoff_premium_${m}`)),
     [Markup.button.callback('◀️ Retour', 'onoff_back')],
@@ -662,7 +759,10 @@ bot.action('onoff_premium', async (ctx) => {
 
 bot.action('onoff_start', async (ctx) => {
   await ctx.answerCbQuery();
-  const text = 'Choisissez la durée (Onoff Start — 2500 FCFA/mois) :';
+  const products = await getActiveProductsByCategory('onoff');
+  const product = products.find(p => (p.titre || '').toLowerCase().includes('start'));
+  const stock = Math.max(0, product?.stock ?? 0);
+  const text = `Choisissez la durée (Onoff Start — 2500 FCFA/mois) — 📦 ${stock} en stock :`;
   const keyboard = Markup.inlineKeyboard([
     ONOFF_MOIS.map(m => Markup.button.callback(`${m} mois`, `onoff_start_${m}`)),
     [Markup.button.callback('◀️ Retour', 'onoff_back')],
@@ -672,7 +772,102 @@ bot.action('onoff_start', async (ctx) => {
 
 bot.action('onoff_back', async (ctx) => {
   await ctx.answerCbQuery();
-  return editCaptionOrText(ctx, CAPTION_ONOFF, getOnoffTypeKeyboard());
+  const products = await getActiveProductsByCategory('onoff');
+  const onoffPremium = products.find(p => (p.titre || '').toLowerCase().includes('premium'));
+  const onoffStart = products.find(p => (p.titre || '').toLowerCase().includes('start'));
+  const premiumStock = onoffPremium ? (onoffPremium.stock ?? 0) : 0;
+  const startStock = onoffStart ? (onoffStart.stock ?? 0) : 0;
+  const caption = getOnoffCaption(premiumStock, startStock);
+  return editCaptionOrText(ctx, caption, getOnoffTypeKeyboard());
+});
+
+// ——— VPN (produits sans limite de stock : admin envoie E, P, date après paiement) ———
+bot.action('cat_vpn', async (ctx) => {
+  await ctx.answerCbQuery();
+  const products = await getActiveProductsByCategory('vpn');
+  if (!products.length) {
+    return ctx.editMessageText(msg.catalogue.noVpn, getCategoryChoiceKeyboard());
+  }
+  try {
+    await ctx.deleteMessage();
+  } catch (_) {}
+  const rows = products.map(p => [Markup.button.callback(`${p.titre || 'VPN'} — ${p.prix || 0} FCFA`, `vpn_cmd_${p.id}`)]);
+  rows.push([Markup.button.callback('◀️ Retour aux catégories', 'cat_back')]);
+  const keyboard = Markup.inlineKeyboard(rows);
+  await ctx.reply('🔒 <b>VPN</b> — Choisissez un produit (livraison des identifiants après paiement) :', { parse_mode: 'HTML', ...keyboard });
+});
+
+const VPN_MOIS = [1, 2, 3, 4, 5, 6];
+const VPN_MAX_QTY = 10;
+
+bot.action(/^vpn_cmd_(.+)$/, async (ctx) => {
+  const productId = ctx.match[1];
+  await ctx.answerCbQuery();
+  const product = await getProductById(productId);
+  if (!product || (product.categorie || '').toLowerCase() !== 'vpn') return ctx.answerCbQuery(msg.catalogue.indisponible);
+  const prix = product.prix || 0;
+  const row = VPN_MOIS.map(m => Markup.button.callback(`${m} mois`, `vpn_mois_${productId}_${m}`));
+  const keyboard = Markup.inlineKeyboard([
+    row.slice(0, 3),
+    row.slice(3, 6),
+    [Markup.button.callback('◀️ Retour', 'cat_vpn')],
+  ]);
+  await ctx.reply(`🔒 <b>${product.titre || 'VPN'}</b> — ${prix} FCFA/mois\n\nChoisissez la durée (1 à 6 mois) :`, { parse_mode: 'HTML', ...keyboard });
+});
+
+bot.action(/^vpn_mois_(.+)_(\d+)$/, async (ctx) => {
+  const productId = ctx.match[1];
+  const months = Math.max(1, Math.min(6, parseInt(ctx.match[2], 10)));
+  await ctx.answerCbQuery();
+  const product = await getProductById(productId);
+  if (!product || (product.categorie || '').toLowerCase() !== 'vpn') return ctx.answerCbQuery(msg.catalogue.indisponible);
+  const row = [];
+  for (let q = 1; q <= VPN_MAX_QTY; q++) row.push(Markup.button.callback(String(q), `vpn_qty_${productId}_${months}_${q}`));
+  const keyboard = Markup.inlineKeyboard([
+    row,
+    [Markup.button.callback('◀️ Retour', `vpn_cmd_${productId}`)],
+  ]);
+  const prix = product.prix || 0;
+  const totalMois = prix * months;
+  await ctx.reply(`🔒 <b>${product.titre || 'VPN'}</b> — ${prix} FCFA/mois × ${months} mois = <b>${totalMois} FCFA</b>\n\nChoisissez la quantité (1 à ${VPN_MAX_QTY}) :`, { parse_mode: 'HTML', ...keyboard });
+});
+
+bot.action(/^vpn_qty_(.+)_(\d+)_(\d+)$/, async (ctx) => {
+  if (isAdmin(ctx)) {
+    await ctx.answerCbQuery();
+    return ctx.reply(msg.client.adminNoOrderHereShort);
+  }
+  const productId = ctx.match[1];
+  const months = Math.max(1, Math.min(6, parseInt(ctx.match[2], 10)));
+  const quantity = Math.max(1, Math.min(VPN_MAX_QTY, parseInt(ctx.match[3], 10)));
+  const product = await getProductById(productId);
+  if (!product || (product.categorie || '').toLowerCase() !== 'vpn') return ctx.answerCbQuery(msg.catalogue.indisponible);
+  const userId = ctx.from.id;
+  const username = ctx.from.username || ctx.from.first_name || 'Client';
+  const order = await createOrder({
+    userId,
+    username,
+    product: {
+      id: product.id,
+      titre: product.titre,
+      prix: product.prix,
+      quantite: quantity,
+      dureeMois: months,
+      categorie: 'vpn',
+    },
+  });
+  const total = order.produit.total;
+  await ctx.answerCbQuery();
+  schedulePaymentReminderAndCancel(bot, order);
+  const link = buildWaveLink(total, order.refCommande);
+  const detail = `${product.titre} — ${months} mois × ${quantity} = <b>${total} FCFA</b>`;
+  console.log(`[${logHorodatage()}] Commande VPN créée ref=${order.refCommande} par ${username} (${product.titre} ${months} mois x${quantity} = ${total} FCFA)`);
+  const orderText = msg.catalogue.orderCreated(order.refCommande, detail) + `\n${link}`;
+  const keyboard = Markup.inlineKeyboard([
+    [Markup.button.url('Payer via Wave', link)],
+    [Markup.button.callback('❌ Annuler la commande', `cancel_order_${order.id}`)],
+  ]);
+  await sendPhotoOrText(ctx, orderText + '\n\n📍 <i>Voir l\'image ci-dessous pour savoir où trouver l\'ID de transaction dans l\'app Wave.</i>', keyboard);
 });
 
 const ONOFF_MAX_QTY = 10;
@@ -782,11 +977,15 @@ bot.action('cat_back', async (ctx) => {
 });
 bot.action('menu_aide', async (ctx) => {
   await ctx.answerCbQuery();
-  const text = 'ℹ️ <b>Aide</b>\n\nUtilise le catalogue pour voir les produits et commander. Après paiement Wave, envoie la capture du reçu ici.';
-  return ctx.editMessageText(text, {
+  const text = 'ℹ️ <b>Aide</b>\n\nUtilise le catalogue pour voir les produits et commander. Après paiement Wave, envoie l\'ID de transaction (ex. T_5EPGALU...) ici.';
+  await ctx.editMessageText(text, {
     parse_mode: 'HTML',
     ...Markup.inlineKeyboard([[Markup.button.callback('◀️ Retour au menu', 'menu_back')]]),
   });
+  const caption = '📍 <b>Où trouver l\'ID de transaction ?</b>\nDans l\'app Wave : détail du paiement → <b>ID de transaction</b> (voir la flèche sur l\'image).';
+  if (hasWaveIdGuideImage()) {
+    await ctx.replyWithPhoto({ source: fs.createReadStream(WAVE_ID_GUIDE_IMAGE_PATH) }, { caption, parse_mode: 'HTML' });
+  }
 });
 bot.action('menu_back', async (ctx) => {
   await ctx.answerCbQuery();
@@ -816,19 +1015,30 @@ async function sendCatalogue(ctx) {
     return ctx.reply(msg.client.sharePhone, contactRequestKeyboard);
   }
   console.log(`[${logHorodatage()}] Catalogue demandé → choix catégorie`);
+  const [netflix, onoff, vpn] = await Promise.all([
+    getActiveProductsByCategory('netflix'),
+    getActiveProductsByCategory('onoff'),
+    getActiveProductsByCategory('vpn'),
+  ]);
+  const netflixStock = netflix.length ? (netflix[0].stock ?? 0) : 0;
+  const onoffPremium = onoff.find(p => (p.titre || '').toLowerCase().includes('premium'));
+  const onoffStart = onoff.find(p => (p.titre || '').toLowerCase().includes('start'));
+  const onoffPremiumStock = onoffPremium ? (onoffPremium.stock ?? 0) : 0;
+  const onoffStartStock = onoffStart ? (onoffStart.stock ?? 0) : 0;
   const netflixImg = process.env.NETFLIX_CAT_IMAGE_URL;
   const onoffImg = process.env.ONOFF_CAT_IMAGE_URL;
   if (netflixImg && onoffImg && netflixImg.startsWith('http') && onoffImg.startsWith('http')) {
     await ctx.replyWithPhoto(netflixImg, {
-      caption: 'Netflix',
+      caption: `Netflix — 📦 ${netflixStock} en stock`,
       ...Markup.inlineKeyboard([[Markup.button.callback('Voir les produits Netflix', 'cat_netflix')]]),
     });
     await ctx.replyWithPhoto(onoffImg, {
-      caption: 'Onoff',
+      caption: `Onoff — 📦 Premium : ${onoffPremiumStock} | Start : ${onoffStartStock} en stock`,
       ...Markup.inlineKeyboard([[Markup.button.callback('Voir les produits Onoff', 'cat_onoff')]]),
     });
   }
-  return ctx.reply('Choisissez une catégorie :', getCategoryChoiceKeyboard());
+  const stockLine = `📦 <b>Stock</b> — Netflix : ${netflixStock} | Onoff P. : ${onoffPremiumStock} / S. : ${onoffStartStock} | 🔒 VPN : illimité`;
+  return ctx.reply(`Choisissez une catégorie :\n\n${stockLine}`, { parse_mode: 'HTML', ...getCategoryChoiceKeyboard() });
 }
 
 bot.command('catalogue', sendCatalogue);
@@ -896,16 +1106,12 @@ bot.action(/^qty_(.+)_(\d+)$/, async (ctx) => {
   const link = buildWaveLink(total, order.refCommande);
   const detailOnoff = `${product.titre} x${quantity} = <b>${total} FCFA</b>`;
   console.log(`[${logHorodatage()}] Commande créée ref=${order.refCommande} par ${username} (${product.titre} x${quantity} = ${total} FCFA)`);
-  await ctx.reply(
-    msg.catalogue.orderCreated(order.refCommande, detailOnoff) + `\n${link}`,
-    {
-      parse_mode: 'HTML',
-      ...Markup.inlineKeyboard([
-        [Markup.button.url('Payer via Wave', link)],
-        [Markup.button.callback('❌ Annuler la commande', `cancel_order_${order.id}`)],
-      ]),
-    }
-  );
+  const orderText = msg.catalogue.orderCreated(order.refCommande, detailOnoff) + `\n${link}`;
+  const keyboard = Markup.inlineKeyboard([
+    [Markup.button.url('Payer via Wave', link)],
+    [Markup.button.callback('❌ Annuler la commande', `cancel_order_${order.id}`)],
+  ]);
+  await sendPhotoOrText(ctx, orderText + '\n\n📍 <i>Voir l\'image ci-dessous pour savoir où trouver l\'ID de transaction dans l\'app Wave.</i>', keyboard);
 });
 
 // Le client annule sa commande (en attente uniquement)
@@ -933,20 +1139,34 @@ bot.action(/^cancel_order_(.+)$/, async (ctx) => {
   await ctx.reply(msg.client.orderCancelledByYou(order.refCommande));
 });
 
-// Photo (reçu) : confirmer la dernière commande en_attente
-bot.on('photo', async (ctx) => {
+const WAVE_TRANSACTION_ID_REGEX = /^T_[A-Za-z0-9]+$/;
+let lastWaveExpiryNotify = 0;
+const WAVE_EXPIRY_NOTIFY_COOLDOWN_MS = 60 * 60 * 1000; // 1 h
+async function notifyAdminWaveTokenExpired() {
+  const now = Date.now();
+  if (now - lastWaveExpiryNotify < WAVE_EXPIRY_NOTIFY_COOLDOWN_MS) return;
+  lastWaveExpiryNotify = now;
+  try {
+    await bot.telegram.sendMessage(
+      ADMIN_CHAT_ID,
+      '⚠️ <b>Wave Business : token expiré</b>\n\nLa vérification des paiements est temporairement désactivée.\n\nSur ton PC : lance <code>node scripts/wave-login.js</code>, récupère le nouveau <code>WAVE_BUSINESS_TOKEN</code>, puis mets à jour la variable d\'environnement sur ton serveur (ex. Railway → Variables).',
+      { parse_mode: 'HTML' }
+    );
+  } catch (e) {
+    console.error('Erreur envoi alerte admin (token Wave expiré):', e.message);
+  }
+}
+
+async function confirmPendingOrderWithReceipt(ctx, order, { fileId = null, waveTransactionId = null } = {}) {
   const userId = ctx.from.id;
   const username = ctx.from.username || ctx.from.first_name || 'Client';
-  const order = await getLastPendingOrderByUser(userId);
-  if (!order) {
-    return ctx.reply(msg.client.noPendingOrder);
-  }
-  const photo = ctx.message.photo.at(-1);
-  const fileId = photo?.file_id;
-
   const product = order.produit?.id ? await getProductById(order.produit.id) : null;
   const qteToDeduct = order.produit?.quantite ?? 1;
-  if (product?.catalogueId != null) {
+  const isVpn = (order.produit?.categorie || '').toLowerCase() === 'vpn';
+
+  if (isVpn) {
+    // VPN : pas de stock, pas de compte à réserver ; l'admin enverra E, P, date plus tard
+  } else if (product?.catalogueId != null) {
     const deliveryData = await reserveCompteForOrder(order.produit.id);
     if (!deliveryData) {
       await updateOrderStatus(order.id, STATUS.ANNULEE);
@@ -966,8 +1186,11 @@ bot.on('photo', async (ctx) => {
     }
     await decrementStock(order.produit.id, qteToDeduct);
   }
+
   await updateOrderStatus(order.id, STATUS.CONFIRMEE);
-  console.log(`[${logHorodatage()}] Commande ${order.refCommande} confirmée (reçu reçu)${product?.catalogueId != null ? ' — compte réservé' : ` → stock -${qteToDeduct}`} → admin notifié`);
+  if (waveTransactionId) await updateOrderWaveTransactionId(order.id, waveTransactionId);
+
+  console.log(`[${logHorodatage()}] Commande ${order.refCommande} confirmée (reçu)${isVpn ? ' — VPN (en attente E/P)' : product?.catalogueId != null ? ' — compte réservé' : ` → stock -${qteToDeduct}`} → admin notifié`);
 
   try {
     await ctx.reply(msg.client.paymentReceived(order.refCommande));
@@ -978,25 +1201,91 @@ bot.on('photo', async (ctx) => {
   const qte = order.produit?.quantite ?? 1;
   const total = order.produit?.total ?? order.produit?.prix;
   const produitLine = qte > 1 ? `${order.produit.titre} x${qte} = ${total} FCFA` : `${order.produit.titre} — ${total} FCFA`;
-  const adminText = `📦 Nouvelle commande confirmée\nRef: ${order.refCommande}\nClient: ${username} (${userId})\nProduit: ${produitLine}`;
-  const adminKeyboard = Markup.inlineKeyboard([
-    [Markup.button.callback('Livré', `livree_${order.id}`), Markup.button.callback('Annuler', `annulee_${order.id}`)],
-  ]);
+  let adminText = `📦 Nouvelle commande confirmée\nRef: ${order.refCommande}\nClient: ${username} (${userId})\nProduit: ${produitLine}`;
+  if (waveTransactionId) adminText += `\n\n🆔 ID transaction Wave: <code>${waveTransactionId}</code>`;
+  const adminKeyboard = isVpn
+    ? Markup.inlineKeyboard([
+        [Markup.button.callback('🔐 Envoyer identifiants VPN', `vpn_creds_${order.id}`)],
+        [Markup.button.callback('Annuler', `annulee_${order.id}`)],
+      ])
+    : Markup.inlineKeyboard([
+        [Markup.button.callback('Livré', `livree_${order.id}`), Markup.button.callback('Annuler', `annulee_${order.id}`)],
+      ]);
+  if (isVpn) adminText += '\n\n🔐 Envoyez E, P et date d\'expiration au client via le bouton ci-dessous.';
   try {
     if (fileId) {
       await ctx.telegram.sendPhoto(ADMIN_CHAT_ID, fileId, {
-        caption: adminText + '\n\n🖼 Reçu Wave',
+        caption: adminText + '\n\n🖼 Reçu Wave (capture)',
+        parse_mode: 'HTML',
         ...adminKeyboard,
       });
     } else {
-      await ctx.telegram.sendMessage(ADMIN_CHAT_ID, adminText, adminKeyboard);
+      await ctx.telegram.sendMessage(ADMIN_CHAT_ID, adminText, { parse_mode: 'HTML', ...adminKeyboard });
     }
   } catch (e) {
     console.error('Erreur envoi notification admin:', e.message);
   }
+}
+
+// ID de transaction Wave (ex. T_5EPGALU...) : vérifier sur Wave Business puis confirmer la commande
+bot.on('text', async (ctx, next) => {
+  const text = ctx.message?.text?.trim();
+  if (!text || !WAVE_TRANSACTION_ID_REGEX.test(text)) return next();
+  if (isAdmin(ctx)) return next();
+  const order = await getLastPendingOrderByUser(ctx.from.id);
+  if (!order) return next();
+
+  const ref = order.refCommande || order.id;
+  const waveConfigured = isWaveConfigured();
+  console.log(`[Wave] Ref ${ref}: ID reçu ${text}. Wave configuré: ${waveConfigured}`);
+
+  if (waveConfigured) {
+    const verification = await verifyTransactionIdInWave(text, order);
+    console.log(`[Wave] Ref ${ref}: vérification API → valid=${verification.valid}, message=${verification.message}`);
+    if (!verification.valid) {
+      await ctx.reply('❌ ' + verification.message);
+      if (/session expirée|expirée/i.test(verification.message)) {
+        notifyAdminWaveTokenExpired();
+      }
+      return;
+    }
+    const { alreadyUsed } = await findOrderByWaveTransactionId(text, order.id);
+    if (alreadyUsed) {
+      await ctx.reply('❌ Cette transaction a déjà été utilisée pour une autre commande. Utilisez l\'ID du paiement de cette commande.');
+      return;
+    }
+  } else {
+    console.log(`[Wave] Ref ${ref}: confirmation SANS vérification (WAVE_BUSINESS_TOKEN ou WAVE_BUSINESS_WALLET_ID manquant dans .env)`);
+  }
+
+  await confirmPendingOrderWithReceipt(ctx, order, { waveTransactionId: text });
+});
+
+// Photo (capture) : encore acceptée pour confirmer la commande (optionnel)
+bot.on('photo', async (ctx) => {
+  const userId = ctx.from.id;
+  const order = await getLastPendingOrderByUser(userId);
+  if (!order) return ctx.reply(msg.client.noPendingOrder);
+  const fileId = ctx.message.photo?.at(-1)?.file_id;
+  await confirmPendingOrderWithReceipt(ctx, order, { fileId });
 });
 
 // ——— Admin ———
+
+// État pour envoi des identifiants VPN (orderId en attente du message E/P/Expiration)
+let vpnCredsOrderId = null;
+
+bot.action(/^vpn_creds_(.+)$/, async (ctx) => {
+  if (!isAdmin(ctx)) return ctx.answerCbQuery('Non autorisé.');
+  const orderId = ctx.match[1];
+  const order = await getOrderById(orderId);
+  if (!order) return ctx.answerCbQuery(msg.admin.orderNotFound);
+  if (order.status !== STATUS.CONFIRMEE) return ctx.answerCbQuery('Commande déjà livrée ou annulée.');
+  if ((order.produit?.categorie || '').toLowerCase() !== 'vpn') return ctx.answerCbQuery('Pas une commande VPN.');
+  vpnCredsOrderId = orderId;
+  await ctx.answerCbQuery();
+  await ctx.reply(msg.admin.vpnSendCredentialsHint, { parse_mode: 'HTML' });
+});
 
 // État d'ajout de produit par catégorie (catégorie → E → P → date)
 const addingProductState = {};
@@ -1030,10 +1319,12 @@ bot.command('commandes', async (ctx) => {
     const qte = o.produit?.quantite ?? 1;
     const total = o.produit?.total ?? o.produit?.prix;
     const produitStr = qte > 1 ? `${o.produit?.titre} x${qte}=${total}` : `${o.produit?.titre} ${o.produit?.prix}`;
+    const isVpn = (o.produit?.categorie || '').toLowerCase() === 'vpn';
     const text = `Ref: ${o.refCommande || o.id} | ${produitStr} FCFA | ${o.status} | @${o.username || o.userId}`;
-    await ctx.reply(text, Markup.inlineKeyboard([
-      [Markup.button.callback('Livré', `livree_${o.id}`), Markup.button.callback('Annuler', `annulee_${o.id}`)],
-    ]));
+    const keyboard = isVpn && o.status === STATUS.CONFIRMEE
+      ? Markup.inlineKeyboard([[Markup.button.callback('🔐 Envoyer identifiants VPN', `vpn_creds_${o.id}`), Markup.button.callback('Annuler', `annulee_${o.id}`)]])
+      : Markup.inlineKeyboard([[Markup.button.callback('Livré', `livree_${o.id}`), Markup.button.callback('Annuler', `annulee_${o.id}`)]]);
+    await ctx.reply(text, keyboard);
   }
 });
 
@@ -1067,9 +1358,36 @@ bot.action(/^addprod_sub_(.+)$/, async (ctx) => {
   await ctx.reply('E : (identifiant du compte, ou - si vide)');
 });
 
-// Texte : étapes E → P → date pour ajout produit par catégorie
+// Texte : étapes E → P → date pour ajout produit par catégorie ; ou envoi identifiants VPN
 bot.on('text', async (ctx) => {
   if (!isAdmin(ctx)) return;
+  const text = (ctx.message.text?.trim() ?? '').replace(/\r/g, '');
+  if (vpnCredsOrderId) {
+    const orderId = vpnCredsOrderId;
+    vpnCredsOrderId = null;
+    const eMatch = text.match(/E:\s*([^\n]+)/i);
+    const pMatch = text.match(/P:\s*([^\n]+)/i);
+    const expMatch = text.match(/Expiration:\s*([^\n]+)/i);
+    const E = eMatch ? eMatch[1].trim() : '';
+    const P = pMatch ? pMatch[1].trim() : '';
+    const dateExpiration = expMatch ? expMatch[1].trim() : '';
+    const order = await getOrderById(orderId);
+    if (!order || order.status !== STATUS.CONFIRMEE) {
+      return ctx.reply('Commande introuvable ou déjà traitée.');
+    }
+    await updateOrderDeliveryData(orderId, { E, P, dateExpiration });
+    await updateOrderStatus(orderId, STATUS.LIVREE);
+    const livraisonMsg = msg.delivery.vpnCredentials(order.refCommande || orderId, E, P, dateExpiration);
+    try {
+      await ctx.telegram.sendMessage(order.userId, livraisonMsg, { parse_mode: 'HTML' });
+    } catch (e) {
+      console.error('Erreur envoi identifiants VPN au client:', e.message);
+      await ctx.reply('Identifiants enregistrés mais envoi au client en échec (utilisateur bloqué ?).');
+      return;
+    }
+    console.log(`[${logHorodatage()}] Commande ${order.refCommande} → identifiants VPN envoyés au client`);
+    return ctx.reply(msg.admin.vpnCredentialsSent(order.refCommande || orderId));
+  }
   if (ctx.message.text?.startsWith('/')) {
     setAddingState(ctx.chat?.id, null);
     return;
@@ -1077,7 +1395,6 @@ bot.on('text', async (ctx) => {
   const chatId = ctx.chat?.id;
   const state = getAddingState(chatId);
   if (!state || state.step === 'category') return;
-  const text = ctx.message.text?.trim() ?? '';
   if (state.step === 'E') {
     setAddingState(chatId, { ...state, step: 'P', E: text });
     return ctx.reply('P : (mot de passe du compte, ou - si vide)');
@@ -1129,10 +1446,14 @@ bot.action(/^livree_(.+)$/, async (ctx) => {
   const orderId = ctx.match[1];
   const order = await getOrderById(orderId);
   if (!order) return ctx.answerCbQuery('Commande introuvable.');
-  // Ne pas renvoyer le compte si déjà livrée (double clic ou rappel)
   if (order.status === STATUS.LIVREE) {
     await ctx.answerCbQuery('Déjà livrée.');
     return;
+  }
+  const isVpn = (order.produit?.categorie || '').toLowerCase() === 'vpn';
+  if (isVpn && !order.deliveryData) {
+    await ctx.answerCbQuery();
+    return ctx.reply('Pour une commande VPN, utilisez le bouton « Envoyer identifiants VPN » pour envoyer E, P et date d\'expiration au client.');
   }
   await updateOrderStatus(orderId, STATUS.LIVREE);
   console.log(`[${logHorodatage()}] Commande ${orderId} → livrée (client notifié)`);

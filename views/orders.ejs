@@ -62,6 +62,8 @@
             <td><%= created %></td>
             <td>
               <% if (o.status === STATUS.CONFIRMEE || o.status === STATUS.EN_ATTENTE) { %>
+              <button type="button" class="btn btn-ghost wave-verify-btn" data-order-id="<%= o.id %>" data-ref="<%= o.refCommande || o.id %>" style="margin-right:4px;">Vérifier Wave</button>
+              <span class="wave-verify-result" id="wave-result-<%= o.id %>" style="display:none;font-size:0.8rem;margin-left:4px;"></span>
               <form method="post" action="/admin/orders/<%= o.id %>/status" style="display:inline;">
                 <input type="hidden" name="status" value="livree" />
                 <button type="submit" class="btn btn-primary">Livré</button>
@@ -91,5 +93,33 @@
       <% } %>
     </main>
   </div>
+  <script>
+    document.querySelectorAll('.wave-verify-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var id = this.getAttribute('data-order-id');
+        var ref = this.getAttribute('data-ref');
+        var resultEl = document.getElementById('wave-result-' + id);
+        if (!resultEl) return;
+        resultEl.style.display = 'inline';
+        resultEl.textContent = 'Vérification…';
+        resultEl.style.color = 'var(--muted)';
+        fetch('/admin/orders/' + id + '/verify-wave')
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            if (data.found) {
+              resultEl.textContent = '✓ ' + (data.message || 'Paiement trouvé');
+              resultEl.style.color = 'var(--accent)';
+            } else {
+              resultEl.textContent = data.message || 'Non trouvé';
+              resultEl.style.color = data.ok ? 'var(--muted)' : 'var(--danger)';
+            }
+          })
+          .catch(function() {
+            resultEl.textContent = 'Erreur réseau';
+            resultEl.style.color = 'var(--danger)';
+          });
+      });
+    });
+  </script>
 </body>
 </html>

@@ -21,7 +21,13 @@
     <%- include('partials/sidebar') %>
     <main class="main">
       <h1><%= category.titreDefaut || category.nom %></h1>
-      <p class="muted">Sous-produits (ex. Start, Premium). Chaque sous-produit a son prix 1 mois et sa description. Pour ajouter du stock : E, P, date dans « Ajout rapide » en choisissant ce catalogue puis ce sous-produit.</p>
+      <p class="muted">
+  <% if ((category.nom || '').toLowerCase() === 'vpn') { %>
+  Produits <strong>VPN</strong> = illimités. Chaque sous-produit apparaît dans le bot. Pas besoin d'ajouter des comptes ici : après chaque commande, le bot vous demandera d'envoyer E, P et date d'expiration au client.
+  <% } else { %>
+  Sous-produits (ex. Start, Premium). Chaque sous-produit a son prix 1 mois. Pour ajouter du stock : E, P, date dans « Ajout rapide » en choisissant ce catalogue puis ce sous-produit.
+  <% } %>
+</p>
       <p><a href="/admin/categories/<%= category.id %>/subs/new" class="btn btn-primary">Nouveau sous-produit</a> <a href="/admin/categories" class="btn btn-ghost">Retour catalogues</a></p>
       <table>
         <thead><tr><th>Nom</th><th>Prix 1 mois (FCFA)</th><th>Description</th><th>Actions</th></tr></thead>

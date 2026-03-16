@@ -21,9 +21,9 @@
     <%- include('partials/sidebar') %>
     <main class="main">
       <h1>Nouvelle catégorie</h1>
-      <p>Conteneur sans prix (ex. netflix, onoff). Les prix sont définis sur les <strong>sous-produits</strong> (à créer après).</p>
+      <p>Conteneur sans prix (ex. netflix, onoff, vpn). Les prix sont sur les <strong>sous-produits</strong>. Utilisez le nom <strong>vpn</strong> pour une catégorie VPN (produits illimités).</p>
       <form method="post" action="/admin/categories/new">
-        <div class="form-row"><label>Nom (ex. netflix, onoff)</label><input type="text" name="nom" required placeholder="netflix" /></div>
+        <div class="form-row"><label>Nom (ex. netflix, onoff, vpn)</label><input type="text" name="nom" required placeholder="netflix" /></div>
         <div class="form-row"><label>Description</label><textarea name="description" rows="3" placeholder="Optionnel"></textarea></div>
         <div class="form-row"><label>URL image</label><input type="url" name="imageUrl" placeholder="https://..." /></div>
         <button type="submit" class="btn btn-primary">Créer</button>

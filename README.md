@@ -81,6 +81,7 @@ npm run dev
 | `npm run backoffice` | Lance uniquement le backoffice (sans bot) |
 | `npm run seed` | Insère des produits/catégories de démo |
 | `npm run seed-categories` | Insère les catégories de démo |
+| `node scripts/seed-vpn.js` | Ajoute un produit VPN de démo (optionnel) |
 | `npm run delete-orders` | Script utilitaire suppression commandes |
 | `npm run reset-db` | Réinitialisation base (à utiliser avec précaution) |
 | `npm test` | Lance les tests |
@@ -92,20 +93,21 @@ npm run dev
 ### Côté utilisateur (Telegram)
 
 - **Menu** : bouton « 📱 Menu » ou `/start` → accès catalogue, suivi commande, aide.
-- **Catalogue** : choix de catégorie puis produit, bouton **Commander** → création commande + lien Wave.
-- **Paiement** : le client paie via le lien Wave (ou WhatsApp en fallback selon config).
-- **Livraison** : après paiement, envoi d’une capture/photo au bot pour confirmer ; l’admin peut marquer la commande comme livrée.
+- **Catalogue** : choix de catégorie (Netflix, Onoff, **VPN**) puis produit → création commande + lien Wave.
+- **Paiement** : le client paie via le lien Wave puis envoie l’**ID de transaction** (ex. T_xxx) au bot.
+- **Livraison** : pour Netflix/Onoff, l’admin marque **Livré** (les identifiants sont envoyés au client). Pour **VPN**, voir ci‑dessous.
 
 ### Côté admin (Telegram)
 
 - **Menu admin** : réservé à `ADMIN_CHAT_ID` (statistiques, commandes, stock, lien backoffice).
-- **Commandes** : voir les commandes en cours, marquer **Livré** / **Annuler**, suivi des comptes disponibles.
+- **Commandes** : voir les commandes en cours, marquer **Livré** / **Annuler**, suivi des comptes disponibles. Pour les commandes **VPN**, bouton **Envoyer identifiants VPN** puis envoi d’un message au format `E: xxx`, `P: xxx`, `Expiration: jj/mm/aaaa`.
 - **Ajout produit** : `/addproduit` puis message au format indiqué (ou ajout via le backoffice).
 
 ### Backoffice web
 
 - **URL** : `http://localhost:3000/admin` (en local) ou ton URL de production.
 - **Fonctions** : tableau de bord, gestion des **catégories** et **sous-produits**, ajout/édition de **produits**, gestion des **commandes** (statuts, livraison).
+- **Vérifier Wave** : sur chaque commande (en attente / confirmée), bouton **Vérifier Wave** pour contrôler si le paiement apparaît sur ton compte Wave Business (sans ouvrir le navigateur). Nécessite `WAVE_BUSINESS_TOKEN` et `WAVE_BUSINESS_WALLET_ID` dans `.env` — voir ci‑dessous.
 
 ---
 
@@ -126,7 +128,8 @@ telegram-bot/
 │   └── backoffice/    # Route serverless backoffice (Vercel)
 ├── views/             # Templates EJS du backoffice
 ├── middleware/        # Auth, pending order, etc.
-├── lib/               # Messages, timers paiement
+├── lib/               # Messages, timers paiement, waveGraphql (vérif. Wave Business)
+├── scripts/           # Scripts utilitaires (ex. wave-login.js)
 ├── .env               # Variables d’environnement (ne pas committer)
 ├── serviceAccountKey.json  # Clé Firebase (ne pas committer)
 └── vercel.json        # Config déploiement Vercel
@@ -152,6 +155,10 @@ Le bot tourne en continu et utilise le **long polling** (comme en local).
 
 - Commande de démarrage : `node index.js` ou `npm start`
 - Même variables que dans `.env` ; pour Firebase, fournir `serviceAccountKey.json` ou la variable **FIREBASE_SERVICE_ACCOUNT** (JSON).
+- **Token Wave Business** : `WAVE_BUSINESS_TOKEN` est un token de **session** (obtenu via `wave-login.js`), pas une clé API permanente. Il peut expirer après un certain temps. En cas d’expiration :
+  1. Sur ton PC : lancer `node scripts/wave-login.js` (SMS requis), récupérer le nouveau `WAVE_BUSINESS_TOKEN`.
+  2. Mettre à jour la variable d’environnement sur le serveur (ex. Railway → Variables → `WAVE_BUSINESS_TOKEN`).
+  3. Redémarrer le service si besoin. Le bot envoie une alerte à l’admin (Telegram) quand le token Wave est détecté comme expiré, pour te rappeler de le renouveler.
 
 ---
 
@@ -160,6 +167,41 @@ Le bot tourne en continu et utilise le **long polling** (comme en local).
 - Les commandes admin sont réservées à **ADMIN_CHAT_ID**.
 - Ne **jamais** committer `.env` ni `serviceAccountKey.json` (présents dans `.gitignore`).
 - En production, utiliser un **BACKOFFICE_PASSWORD** fort et, si possible, **HTTPS** pour le backoffice.
+
+---
+
+## Vérification des paiements Wave Business (optionnel)
+
+Wave ne fournit pas d’API publique pour les comptes business. Ce projet utilise l’API GraphQL interne de Wave (sans navigateur) pour comparer l’historique de ton portefeuille aux commandes.
+
+1. **Obtenir un token et le wallet ID** (une fois) :
+   ```bash
+   node scripts/wave-login.js
+   ```
+   Tu peux définir `WAVE_BUSINESS_MOBILE` et `WAVE_BUSINESS_PIN` dans `.env`, ou les saisir quand le script le demande. À la fin, le script affiche les lignes à ajouter dans `.env` :
+   - `WAVE_BUSINESS_TOKEN=...`
+   - `WAVE_BUSINESS_WALLET_ID=...`
+
+2. **Dans le backoffice** : sur la page Commandes, clique sur **Vérifier Wave** à côté d’une commande. Le système compare la référence et le montant aux transactions Wave de la période concernée.
+
+Si le token expire (erreur « session expirée »), relance `node scripts/wave-login.js` et mets à jour `WAVE_BUSINESS_TOKEN` dans `.env`.
+
+---
+
+## Catalogue VPN
+
+Les produits **VPN** n’ont pas de limite de stock : tu les ajoutes comme les autres (backoffice ou script), avec la **catégorie** `vpn`. Le client commande, paie via Wave et envoie l’ID de transaction. Une fois le paiement validé par le système :
+
+1. Le bot notifie l’admin avec un bouton **« Envoyer identifiants VPN »**.
+2. L’admin clique sur le bouton, puis envoie un seul message au format :
+   ```
+   E: identifiant@exemple.com
+   P: mot_de_passe
+   Expiration: 31/12/2026
+   ```
+3. Le bot enregistre E, P et la date d’expiration, envoie ces identifiants au client et marque la commande comme **livrée**.
+
+Pour créer des produits VPN : dans le backoffice (Produits), crée un produit avec **catégorie** = `vpn` (et sans lien catalogue/sous-produit type Netflix/Onoff). Les produits VPN s’affichent dans le catalogue bot sous **🔒 VPN** et sont proposés sans notion de stock (illimité).
 
 ---
 
