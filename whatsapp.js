@@ -35,6 +35,7 @@ const WAVE_TRANSACTION_ID_REGEX = /^T_[A-Za-z0-9]+$/;
 
 const ADMIN_CHAT_ID = (process.env.ADMIN_CHAT_ID || '').trim();
 const BOT_TOKEN = (process.env.BOT_TOKEN || '').trim();
+const WHATSAPP_DATA_PATH = (process.env.WHATSAPP_DATA_PATH || '').trim();
 const ALLOWED_USER_IDS = new Set(
   (process.env.ALLOWED_USER_IDS || '').split(',').map((s) => s.trim()).filter(Boolean)
 );
@@ -170,7 +171,11 @@ async function run() {
   initFirebase();
   // Version WhatsApp Web figée pour éviter "impossible de connecter l'appareil" (charriage infini puis erreur sur le téléphone)
   const client = new Client({
-    authStrategy: new LocalAuth({ clientId: 'novaabo-wa' }),
+    authStrategy: new LocalAuth(
+      WHATSAPP_DATA_PATH
+        ? { clientId: 'novaabo-wa', dataPath: WHATSAPP_DATA_PATH }
+        : { clientId: 'novaabo-wa' }
+    ),
     webVersion: '2.2412.54',
     puppeteer: {
       headless: true,
