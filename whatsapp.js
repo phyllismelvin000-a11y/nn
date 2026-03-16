@@ -169,6 +169,10 @@ function isAdminByPhone(userId) {
 
 async function run() {
   initFirebase();
+  // #region agent log
+  const _webVersion = '2.2412.54';
+  fetch('http://127.0.0.1:7469/ingest/5fea427c-524d-49b7-a9a5-f8a7dc6dea48',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'29a20c'},body:JSON.stringify({sessionId:'29a20c',location:'whatsapp.js:run',message:'Client config',data:{webVersion:_webVersion,hasDataPath:!!WHATSAPP_DATA_PATH},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
   // Version WhatsApp Web figée pour éviter "impossible de connecter l'appareil" (charriage infini puis erreur sur le téléphone)
   const client = new Client({
     authStrategy: new LocalAuth(
@@ -176,7 +180,7 @@ async function run() {
         ? { clientId: 'novaabo-wa', dataPath: WHATSAPP_DATA_PATH }
         : { clientId: 'novaabo-wa' }
     ),
-    webVersion: '2.2412.54',
+    webVersion: _webVersion,
     puppeteer: {
       headless: true,
       args: [
@@ -192,6 +196,11 @@ async function run() {
   });
 
   client.on('qr', async (qr) => {
+    // #region agent log
+    const _qrLen = typeof qr === 'string' ? qr.length : 0;
+    const _urlLen = 55 + (typeof qr === 'string' ? encodeURIComponent(qr).length : 0);
+    fetch('http://127.0.0.1:7469/ingest/5fea427c-524d-49b7-a9a5-f8a7dc6dea48',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'29a20c'},body:JSON.stringify({sessionId:'29a20c',location:'whatsapp.js:qr',message:'QR received',data:{qrLength:_qrLen,imageUrlLength:_urlLen,over2048:_urlLen>2048},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     console.log('\n📱 Scannez ce QR code avec votre téléphone :');
     console.log('   WhatsApp → Paramètres → Appareils connectés → Lier un appareil\n');
     qrcode.generate(qr, { small: true });
@@ -216,15 +225,24 @@ async function run() {
   });
 
   client.on('auth_failure', (msg) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7469/ingest/5fea427c-524d-49b7-a9a5-f8a7dc6dea48',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'29a20c'},body:JSON.stringify({sessionId:'29a20c',location:'whatsapp.js:auth_failure',message:'Auth failure',data:{msg:String(msg||'').slice(0,200)},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
     console.error('❌ Échec de connexion WhatsApp:', msg || 'auth_failure');
     console.error('   → Supprimez le dossier .wwebjs_auth (session) puis relancez npm run start:whatsapp');
   });
 
   client.on('disconnected', (reason) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7469/ingest/5fea427c-524d-49b7-a9a5-f8a7dc6dea48',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'29a20c'},body:JSON.stringify({sessionId:'29a20c',location:'whatsapp.js:disconnected',message:'Disconnected',data:{reason:String(reason||'').slice(0,200)},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
     console.log('WhatsApp déconnecté:', reason);
   });
 
   client.on('ready', () => {
+    // #region agent log
+    fetch('http://127.0.0.1:7469/ingest/5fea427c-524d-49b7-a9a5-f8a7dc6dea48',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'29a20c'},body:JSON.stringify({sessionId:'29a20c',location:'whatsapp.js:ready',message:'Ready',data:{},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
     console.log('WhatsApp client prêt.');
     const waAdapter = createWaBotAdapter(client);
     runPaymentTimeoutRecovery(waAdapter, { userIdFilter: (id) => String(id).startsWith('wa_') }).then(() => {
