@@ -1050,8 +1050,14 @@ async function sendCatalogue(ctx) {
       ...Markup.inlineKeyboard([[Markup.button.callback('Voir les produits Onoff', 'cat_onoff')]]),
     });
   }
-  const stockLine = `📦 <b>Stock</b> — Netflix : ${netflixStock} | Onoff P. : ${onoffPremiumStock} / S. : ${onoffStartStock} | 🔒 VPN : illimité`;
-  return ctx.reply(`Choisissez une catégorie :\n\n${stockLine}`, { parse_mode: 'HTML', ...getCategoryChoiceKeyboard() });
+  const stockLines = [
+    '📦 <b>Stock</b>',
+    `• Netflix : ${netflixStock} en stock`,
+    `• Onoff Premium : ${onoffPremiumStock} en stock`,
+    `• Onoff Starter : ${onoffStartStock} en stock`,
+    '• 🔒 VPN : illimité',
+  ].join('\n');
+  return ctx.reply(`Choisissez une catégorie :\n\n${stockLines}`, { parse_mode: 'HTML', ...getCategoryChoiceKeyboard() });
 }
 
 bot.command('catalogue', sendCatalogue);
