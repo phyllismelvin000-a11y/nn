@@ -105,6 +105,14 @@ bot.catch((err, ctx) => {
     try { if (ctx?.answerCbQuery) ctx.answerCbQuery().catch(() => {}); } catch (_) {}
     return;
   }
+  // Callback cliqué il y a trop longtemps : Telegram n'accepte plus la réponse (timeout ~30 s). Ignorer sans faire planter le bot.
+  const isQueryTooOld =
+    (err.message && (err.message.includes('query is too old') || err.message.includes('query ID is invalid'))) ||
+    (err.response?.description && (err.response.description.includes('query is too old') || err.response.description.includes('query ID is invalid')));
+  if (isQueryTooOld) {
+    try { if (ctx?.answerCbQuery) ctx.answerCbQuery().catch(() => {}); } catch (_) {}
+    return;
+  }
   console.error('Erreur bot:', err.message);
   if (err.code === 5 || (err.message && err.message.includes('NOT_FOUND'))) {
     console.error('\n❌ NOT_FOUND = la base Firestore n’existe pas encore.');
@@ -1542,6 +1550,7 @@ async function start() {
       const is409 = e.response?.error_code === 409 || (e.message && e.message.includes('409'));
       if (is409 && attempt < maxLaunchAttempts) {
         console.log('  Conflit 409 (autre instance en cours). Nouvelle tentative dans ' + launchDelayMs / 1000 + ' s...');
+        console.log('  → Assure-toi qu\'une seule instance tourne (arrête le bot en local ou l’autre déploiement qui utilise le même BOT_TOKEN).');
         await new Promise((r) => setTimeout(r, launchDelayMs));
       } else {
         throw e;
