@@ -36,16 +36,13 @@ function invalidateActiveProductsCache() {
 }
 
 async function enrichStockFromComptes(products) {
-  const out = [];
-  for (const p of products) {
+  return Promise.all(products.map(async (p) => {
     if (p.catalogueId != null) {
       const stock = await getAvailableCount(p.id);
-      out.push({ ...p, stock });
-    } else {
-      out.push(p);
+      return { ...p, stock };
     }
-  }
-  return out;
+    return { ...p };
+  }));
 }
 
 /** Filtre une liste de produits par catégorie (pur, testable). */

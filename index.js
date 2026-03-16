@@ -658,6 +658,7 @@ function getNetflixCaption(stock) {
 
 bot.action('cat_netflix', async (ctx) => {
   await ctx.answerCbQuery();
+  ctx.sendChatAction('typing').catch(() => {});
   const products = await getActiveProductsByCategory('netflix');
   const product = products[0];
   if (!product) {
@@ -716,6 +717,7 @@ function getOnoffCaption(premiumStock, startStock) {
 
 bot.action('cat_onoff', async (ctx) => {
   await ctx.answerCbQuery();
+  ctx.sendChatAction('typing').catch(() => {});
   const products = await getActiveProductsByCategory('onoff');
   if (!products.length) {
     return ctx.editMessageText(msg.catalogue.noOnoff, getCategoryChoiceKeyboard());
@@ -793,6 +795,7 @@ bot.action('onoff_back', async (ctx) => {
 // ——— VPN (produits sans limite de stock : admin envoie E, P, date après paiement) ———
 bot.action('cat_vpn', async (ctx) => {
   await ctx.answerCbQuery();
+  ctx.sendChatAction('typing').catch(() => {});
   const products = await getActiveProductsByCategory('vpn');
   if (!products.length) {
     return ctx.editMessageText(msg.catalogue.noVpn, getCategoryChoiceKeyboard());
