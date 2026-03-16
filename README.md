@@ -154,12 +154,13 @@ Le bot fonctionne en **webhook** : Telegram envoie les mises à jour à ton URL.
 Le bot tourne en continu et utilise le **long polling** (comme en local).
 
 - Commande de démarrage : `node index.js` ou `npm start`
-- Même variables que dans `.env`. **Sur Railway / Render** (pas de fichier sur le serveur) : tu **dois** définir la variable **`FIREBASE_SERVICE_ACCOUNT`** avec le **contenu complet** de ton fichier `serviceAccountKey.json` :
-  1. Ouvre `serviceAccountKey.json` en local.
-  2. Copie tout le JSON (Ctrl+A, Ctrl+C).
-  3. Minifie en une seule ligne si besoin (supprimer retours à la ligne) — certains hébergeurs n’acceptent que une ligne.
-  4. Dans Railway (ou Render) : **Variables** → **New Variable** → Nom : `FIREBASE_SERVICE_ACCOUNT`, Valeur : colle le JSON.
-  5. Redéploie. Sans cette variable, le bot affiche « ni FIREBASE_SERVICE_ACCOUNT (env), ni serviceAccountKey.json » et ne démarre pas.
+- Même variables que dans `.env`. **Sur Railway / Render** (pas de fichier sur le serveur) : tu **dois** définir les credentials Firebase via une variable d’environnement. **Deux options** :
+  - **Option recommandée (base64)** — évite les soucis de guillemets sur Railway :
+    1. En local, à la racine du projet : `node scripts/firebase-env-base64.js`
+    2. Copie **toute** la ligne affichée (une longue chaîne base64).
+    3. Railway → **Variables** → **New Variable** → Nom : `FIREBASE_SERVICE_ACCOUNT_BASE64`, Valeur : colle la chaîne.
+    4. Redéploie.
+  - **Option JSON** : Nom `FIREBASE_SERVICE_ACCOUNT`, valeur = contenu complet de `serviceAccountKey.json` **en une seule ligne** (minifier le JSON, pas de retours à la ligne). Si tu vois encore l’erreur Firebase, utilise l’option base64 ci‑dessus.
 - **Token Wave Business** : `WAVE_BUSINESS_TOKEN` est un token de **session** (obtenu via `wave-login.js`), pas une clé API permanente. Il peut expirer après un certain temps. En cas d’expiration :
   1. Sur ton PC : lancer `node scripts/wave-login.js` (SMS requis), récupérer le nouveau `WAVE_BUSINESS_TOKEN`.
   2. Mettre à jour la variable d’environnement sur le serveur (ex. Railway → Variables → `WAVE_BUSINESS_TOKEN`).
