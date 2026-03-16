@@ -169,18 +169,16 @@ function isAdminByPhone(userId) {
 
 async function run() {
   initFirebase();
-  // #region agent log
-  const _webVersion = '2.2412.54';
-  fetch('http://127.0.0.1:7469/ingest/5fea427c-524d-49b7-a9a5-f8a7dc6dea48',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'29a20c'},body:JSON.stringify({sessionId:'29a20c',location:'whatsapp.js:run',message:'Client config',data:{webVersion:_webVersion,hasDataPath:!!WHATSAPP_DATA_PATH},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
-  // Version WhatsApp Web figée pour éviter "impossible de connecter l'appareil" (charriage infini puis erreur sur le téléphone)
   const client = new Client({
     authStrategy: new LocalAuth(
       WHATSAPP_DATA_PATH
         ? { clientId: 'novaabo-wa', dataPath: WHATSAPP_DATA_PATH }
         : { clientId: 'novaabo-wa' }
     ),
-    webVersion: _webVersion,
+    webVersionCache: {
+      type: 'remote',
+      remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+    },
     puppeteer: {
       headless: true,
       args: [

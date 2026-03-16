@@ -1292,13 +1292,19 @@ bot.on('text', async (ctx, next) => {
   await confirmPendingOrderWithReceipt(ctx, order, { waveTransactionId: text });
 });
 
-// Photo (capture) : encore acceptée pour confirmer la commande (optionnel)
+// Photo (capture) : ne confirme plus la commande, on demande l'ID de transaction Wave
 bot.on('photo', async (ctx) => {
+  if (isAdmin(ctx)) return;
   const userId = ctx.from.id;
   const order = await getLastPendingOrderByUser(userId);
-  if (!order) return ctx.reply(msg.client.noPendingOrder);
-  const fileId = ctx.message.photo?.at(-1)?.file_id;
-  await confirmPendingOrderWithReceipt(ctx, order, { fileId });
+  if (!order) {
+    await ctx.reply(msg.client.noPendingOrder);
+    return;
+  }
+  await ctx.reply(
+    "Merci pour la capture, mais pour confirmer ta commande il faut m'envoyer uniquement l'<b>ID de transaction Wave</b> (ex. <code>T_5EPGALU...</code>) que tu vois dans le détail du paiement.",
+    { parse_mode: 'HTML' }
+  );
 });
 
 // ——— Admin ———
