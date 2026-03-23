@@ -121,7 +121,7 @@ bot.catch((err, ctx) => {
   }
   console.error('Erreur bot:', err.message);
   if (err.code === 5 || (err.message && err.message.includes('NOT_FOUND'))) {
-    console.error('\n❌ NOT_FOUND = la base Firestore n'existe pas encore.');
+    console.error('\n❌ NOT_FOUND = la base Firestore n\'existe pas encore.');
     console.error('   Crée-la ici : https://console.firebase.google.com');
     console.error('   → Ton projet → Firestore Database → "Créer une base de données"');
     console.error('   → Choisir une région (ex. europe-west1) → Activer.\n');
