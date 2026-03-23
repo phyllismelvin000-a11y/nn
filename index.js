@@ -26,6 +26,12 @@ const { checkAndSendReplenishmentAlert, getAllUserIdsToNotify } = require('./lib
 const { verifyTransactionIdInWave, isConfigured: isWaveConfigured } = require('./lib/waveGraphql');
 const msg = require('./lib/messages');
 
+/** Échappe HTML pour éviter "can't parse entities" (noms/pseudos avec < > &) */
+function escapeHtml(s) {
+  if (s == null || typeof s !== 'string') return '';
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 /** Image pour montrer où trouver l'ID de transaction dans l'app Wave (flèche orange) */
 const WAVE_ID_GUIDE_IMAGE_PATH = path.join(__dirname, 'assets', 'wave-id-transaction.png');
 function hasWaveIdGuideImage() {
@@ -115,7 +121,7 @@ bot.catch((err, ctx) => {
   }
   console.error('Erreur bot:', err.message);
   if (err.code === 5 || (err.message && err.message.includes('NOT_FOUND'))) {
-    console.error('\n❌ NOT_FOUND = la base Firestore n’existe pas encore.');
+    console.error('\n❌ NOT_FOUND = la base Firestore n'existe pas encore.');
     console.error('   Crée-la ici : https://console.firebase.google.com');
     console.error('   → Ton projet → Firestore Database → "Créer une base de données"');
     console.error('   → Choisir une région (ex. europe-west1) → Activer.\n');
@@ -466,7 +472,7 @@ bot.action('admin_users', async (ctx) => {
   const lines = users.map((u) => {
     const name = [u.firstName, u.username ? `@${u.username}` : ''].filter(Boolean).join(' ') || `ID ${u.userId}`;
     const phone = u.phone_number || '—';
-    return `• ${name} — ${phone}`;
+    return `• ${escapeHtml(name)} — ${escapeHtml(phone)}`;
   });
   const header = `👥 <b>Utilisateurs</b> (${users.length})\n\n`;
   const body = lines.join('\n');
@@ -1579,29 +1585,36 @@ async function start() {
   if (process.env.BACKOFFICE_PASSWORD) {
     console.log('  Backoffice : http://localhost:' + backofficePort + '/admin');
   }
-  console.log('  Lancement du bot Telegram...');
-  const launchOpts = { dropPendingUpdates: true };
-  const maxLaunchAttempts = 5;
-  const launchDelayMs = 8000;
-  for (let attempt = 1; attempt <= maxLaunchAttempts; attempt++) {
-    try {
-      await bot.launch(launchOpts);
-      break;
-    } catch (e) {
-      const is409 = e.response?.error_code === 409 || (e.message && e.message.includes('409'));
-      if (is409 && attempt < maxLaunchAttempts) {
-        console.log('  Conflit 409 (autre instance en cours). Nouvelle tentative dans ' + launchDelayMs / 1000 + ' s...');
-        console.log('  → Assure-toi qu\'une seule instance tourne (arrête le bot en local ou l’autre déploiement qui utilise le même BOT_TOKEN).');
-        await new Promise((r) => setTimeout(r, launchDelayMs));
-      } else {
-        throw e;
+  const disableTelegram = process.env.DISABLE_TELEGRAM === 'true' || process.env.DISABLE_TELEGRAM === '1';
+  if (disableTelegram) {
+    console.log('  Telegram désactivé (DISABLE_TELEGRAM=true). Backoffice uniquement.');
+    backoffice.setBot(null);
+  } else {
+    console.log('  Lancement du bot Telegram...');
+    const launchOpts = { dropPendingUpdates: true };
+    const maxLaunchAttempts = 5;
+    const launchDelayMs = 8000;
+    for (let attempt = 1; attempt <= maxLaunchAttempts; attempt++) {
+      try {
+        await bot.launch(launchOpts);
+        break;
+      } catch (e) {
+        const is409 = e.response?.error_code === 409 || (e.message && e.message.includes('409'));
+        if (is409 && attempt < maxLaunchAttempts) {
+          console.log('  Conflit 409 (autre instance en cours). Nouvelle tentative dans ' + launchDelayMs / 1000 + ' s...');
+          console.log('  → Assure-toi qu\'une seule instance tourne (arrête le bot en local ou l\'autre déploiement qui utilise le même BOT_TOKEN).');
+          console.log('  → Ou définis DISABLE_TELEGRAM=true sur ce service pour ne lancer que le backoffice.');
+          await new Promise((r) => setTimeout(r, launchDelayMs));
+        } else {
+          throw e;
+        }
       }
     }
+    backoffice.setBot(bot);
+    await runPaymentTimeoutRecovery(bot, { userIdFilter: (id) => !String(id).startsWith('wa_') });
   }
-  backoffice.setBot(bot);
-  await runPaymentTimeoutRecovery(bot, { userIdFilter: (id) => !String(id).startsWith('wa_') });
   console.log('');
-  console.log('  Bot start');
+  console.log('  Démarrage terminé.');
   console.log('  Arrêt : Ctrl+C');
   console.log('');
 }
